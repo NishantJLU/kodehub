@@ -76,6 +76,7 @@ export interface TrackSnapshot {
 }
 
 export interface SyncResult {
+  syncId?: string;
   status: 'successful' | 'failed' | 'waiting_for_data';
   lastSyncedAt: string;
   newActivitiesCount: number;
@@ -131,6 +132,8 @@ export interface GitHubConfig {
   lastSyncAt: string | null;
   lastSyncCommitSha: string | null;
   lastSyncCommitUrl: string | null;
+  lastSyncStatus?: 'idle' | 'syncing' | 'success' | 'failed';
+  lastSyncError?: string | null;
 }
 
 export interface GitHubCommitRecord {

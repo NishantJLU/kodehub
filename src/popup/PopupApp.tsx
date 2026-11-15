@@ -141,6 +141,8 @@ export const PopupApp: React.FC = () => {
   const triggerSync = async () => {
     if (typeof chrome === 'undefined' || !chrome.tabs || isSyncing) return;
     setIsSyncing(true);
+    const syncId = `sync-${Date.now()}`;
+    console.log(`[KodeHub Popup][${syncId}] SYNC_STARTED`);
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -148,7 +150,9 @@ export const PopupApp: React.FC = () => {
       if (!tab?.id || !tab.url || (!tab.url.includes('engineer.kodekloud.com') && !tab.url.includes('kodekloud.com'))) {
         setIsSyncing(false);
         const existingTracks = await StorageService.getTracks();
+        console.warn(`[KodeHub Popup][${syncId}] TAB_DETECTION_FAILED: Not on KodeKloud practice page`);
         setLastSync({
+          syncId,
           status: 'waiting_for_data',
           lastSyncedAt: new Date().toISOString(),
           newActivitiesCount: 0,
@@ -172,7 +176,7 @@ export const PopupApp: React.FC = () => {
         return;
       }
 
-      console.log('[KodeHub Popup] Requesting progress from tab:', tab.id, tab.url);
+      console.log(`[KodeHub Popup][${syncId}] TAB_DETECTED:`, tab.id, tab.url);
 
       let response: any = null;
       let contentScriptInjected = false;
@@ -196,26 +200,29 @@ export const PopupApp: React.FC = () => {
             files: ['content.js'],
           });
           contentScriptInjected = true;
-          console.log('[KodeHub Popup] Content script injected dynamically.');
+          console.log(`[KodeHub Popup][${syncId}] CONTENT_SCRIPT_INJECTED dynamically.`);
           await new Promise((res) => setTimeout(res, 200));
         } catch (injectErr: any) {
-          console.warn('[KodeHub Popup] Dynamic script injection note:', injectErr);
+          console.warn(`[KodeHub Popup][${syncId}] CONTENT_SCRIPT_INJECTION warning:`, injectErr);
         }
       }
 
       // Request live extraction
+      console.log(`[KodeHub Popup][${syncId}] CONTENT_SCRIPT_REQUESTED`);
       try {
         response = await sendTabMessage(tab.id, { type: 'EXTRACT_PROGRESS' }, 5000);
       } catch (err: any) {
-        console.error('[KodeHub Popup] EXTRACT_PROGRESS message failed:', err);
+        console.error(`[KodeHub Popup][${syncId}] CONTENT_SCRIPT_REQUEST_FAILED:`, err);
         throw new Error('Unable to connect to KodeKloud page. Refresh the page.');
       }
+      console.log(`[KodeHub Popup][${syncId}] CONTENT_SCRIPT_RESPONDED:`, response?.status);
 
       // Handle page loading state gracefully
       if (response?.status === 'waiting_for_data') {
         setIsSyncing(false);
         const existingTracks = await StorageService.getTracks();
         const waitResult: SyncResult = {
+          syncId,
           status: 'waiting_for_data',
           lastSyncedAt: new Date().toISOString(),
           newActivitiesCount: 0,
@@ -237,12 +244,13 @@ export const PopupApp: React.FC = () => {
         Array.isArray(tracks);
 
       if (isSuccess) {
-        console.log(`[KodeHub Popup] Content script returned ${tracks.length} tracks:`, tracks);
+        console.log(`[KodeHub Popup][${syncId}] COURSES_EXTRACTED: ${tracks.length} tracks found`);
 
         if (tracks.length === 0) {
           setIsSyncing(false);
           const existingTracks = await StorageService.getTracks();
           const emptyResult: SyncResult = {
+            syncId,
             status: 'waiting_for_data',
             lastSyncedAt: new Date().toISOString(),
             newActivitiesCount: 0,
@@ -263,7 +271,9 @@ export const PopupApp: React.FC = () => {
         }
 
         // Delegate authoritative snapshot diffing to background worker
+        console.log(`[KodeHub Popup][${syncId}] LOCAL_SYNC_REQUESTED in background worker`);
         const bgResponse = await executeBackgroundSync({
+          syncId,
           tracks,
           diagnostics: {
             ...(diagnostics || {}),
@@ -278,6 +288,7 @@ export const PopupApp: React.FC = () => {
 
         if (bgResponse?.result) {
           setLastSync(bgResponse.result);
+          console.log(`[KodeHub Popup][${syncId}] LOCAL_SYNC_COMPLETED:`, bgResponse.result.message);
         }
         await loadData();
         setIsSyncing(false);
@@ -286,11 +297,12 @@ export const PopupApp: React.FC = () => {
         throw new Error(errorMsg);
       }
     } catch (e: any) {
-      console.error('[KodeHub Popup] Sync failure:', e);
+      console.error(`[KodeHub Popup][${syncId}] SYNC_FAILED:`, e);
       setIsSyncing(false);
       // Preserve existing tracks on failure - NEVER wipe them!
       const existingTracks = await StorageService.getTracks();
       const failResult: SyncResult = {
+        syncId,
         status: 'failed',
         lastSyncedAt: new Date().toISOString(),
         newActivitiesCount: 0,
@@ -301,7 +313,7 @@ export const PopupApp: React.FC = () => {
           stage: 'DOM_EXTRACTION',
           status: 'FAILED',
           reason: e?.message || 'EXTRACTION_FAILURE',
-          url: window.location.href,
+          url: typeof window !== 'undefined' && window.location ? window.location.href : '',
           elementsScanned: 0,
           cardsDiscovered: existingTracks.length,
           strategiesUsed: [],
@@ -453,7 +465,7 @@ export const PopupApp: React.FC = () => {
         </div>
       )}
 
-      {/* GitHub Sync Status Bar */}
+      {/* GitHub Sync Status Bar (Decoupled from local sync) */}
       {gitHubConfig?.selectedRepo && (
         <div className="mb-2.5 px-2.5 py-1.5 bg-[#121a28] border border-[#1e2a3e] rounded-xl flex items-center justify-between text-[10px] text-slate-300">
           <div className="flex items-center gap-1.5 truncate">
@@ -466,15 +478,29 @@ export const PopupApp: React.FC = () => {
                 Auto
               </span>
             )}
+            {gitHubConfig.lastSyncStatus === 'syncing' && (
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-950/90 text-amber-300 border border-amber-800/80 flex items-center gap-1">
+                <RefreshCw className="w-2 h-2 animate-spin" />
+                Pushing...
+              </span>
+            )}
+            {gitHubConfig.lastSyncStatus === 'failed' && (
+              <span
+                className="text-[8px] px-1.5 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-800/80"
+                title={gitHubConfig.lastSyncError || 'GitHub push failed'}
+              >
+                Push Failed
+              </span>
+            )}
           </div>
           <button
             onClick={handlePushGitHub}
-            disabled={isGitHubSyncing}
+            disabled={isGitHubSyncing || gitHubConfig.lastSyncStatus === 'syncing'}
             className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 shrink-0 font-medium hover:underline disabled:opacity-50"
             title="Push verified progress to GitHub"
           >
-            <RefreshCw className={`w-2.5 h-2.5 ${isGitHubSyncing ? 'animate-spin' : ''}`} />
-            <span>{isGitHubSyncing ? 'Pushing...' : 'Push'}</span>
+            <RefreshCw className={`w-2.5 h-2.5 ${isGitHubSyncing || gitHubConfig.lastSyncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+            <span>{isGitHubSyncing || gitHubConfig.lastSyncStatus === 'syncing' ? 'Pushing...' : 'Push'}</span>
           </button>
         </div>
       )}

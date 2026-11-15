@@ -453,4 +453,102 @@ describe('KodeHub Comprehensive Synchronization & Accuracy Suite', () => {
     expect(metrics.pendingTasks).toBe(83);
     expect(metrics.completionPercentage).toBe(17);
   });
+
+  // TEST 11 — Local sync responds immediately without waiting for GitHub push
+  it('TEST 11: handleVerifiedSync completes local synchronization immediately and persists tracks', async () => {
+    const { handleVerifiedSync } = await import('../src/background/index');
+
+    const tracks: TrackProgress[] = [
+      {
+        trackId: 'track-100-days-of-mlops',
+        trackName: '100 Days of MLOps',
+        completedTasks: 17,
+        totalTasks: 100,
+        pendingTasks: 83,
+        lastSyncedAt: new Date().toISOString(),
+      },
+      {
+        trackId: 'track-100-days-of-devops',
+        trackName: '100 Days of DevOps',
+        completedTasks: 0,
+        totalTasks: 100,
+        pendingTasks: 100,
+        lastSyncedAt: new Date().toISOString(),
+      },
+    ];
+
+    const result = await handleVerifiedSync(tracks, { stage: 'TEST' }, 'test-sync-11');
+
+    expect(result.status).toBe('successful');
+    expect(result.tracks.length).toBe(2);
+
+    const savedTracks = await StorageService.getTracks();
+    expect(savedTracks.length).toBe(2);
+    expect(savedTracks[0].completedTasks).toBe(17);
+    expect(savedTracks[1].completedTasks).toBe(0);
+
+    const lastSync = await StorageService.getLastSyncResult();
+    expect(lastSync?.status).toBe('successful');
+  });
+
+  // TEST 12 — Mutex lock prevents overlapping sync and auto-expires
+  it('TEST 12: acquireSyncLock manages mutex concurrency and releases safely', async () => {
+    const { acquireSyncLock, releaseSyncLock } = await import('../src/background/index');
+
+    const lock1 = acquireSyncLock('sync-run-A');
+    expect(lock1).toBe(true);
+
+    // Second overlapping attempt with active lock must be blocked
+    const lock2 = acquireSyncLock('sync-run-B');
+    expect(lock2).toBe(false);
+
+    // After release, new sync can acquire lock
+    releaseSyncLock('sync-run-A');
+    const lock3 = acquireSyncLock('sync-run-C');
+    expect(lock3).toBe(true);
+    releaseSyncLock('sync-run-C');
+  });
+
+  // TEST 13 — Local synchronization succeeds independently of GitHub failures
+  it('TEST 13: local progress sync succeeds even when GitHub repository throws errors', async () => {
+    const { handleVerifiedSync } = await import('../src/background/index');
+
+    // Configure GitHub with broken credentials
+    await StorageService.saveGitHubConfig({
+      token: 'bad-token',
+      user: null,
+      selectedRepo: {
+        id: 99,
+        name: 'kodekloud-progress',
+        full_name: 'NishantJLU/kodekloud-progress',
+        private: true,
+        html_url: 'https://github.com/NishantJLU/kodekloud-progress',
+        default_branch: 'main',
+        description: null,
+      },
+      branch: 'main',
+      autoSync: true,
+      lastSyncAt: null,
+      lastSyncCommitSha: null,
+      lastSyncCommitUrl: null,
+    });
+
+    const tracks: TrackProgress[] = [
+      {
+        trackId: 'track-100-days-of-mlops',
+        trackName: '100 Days of MLOps',
+        completedTasks: 18,
+        totalTasks: 100,
+        pendingTasks: 82,
+        lastSyncedAt: new Date().toISOString(),
+      },
+    ];
+
+    // Local sync must succeed and return 'successful' immediately
+    const result = await handleVerifiedSync(tracks, {}, 'test-sync-13');
+    expect(result.status).toBe('successful');
+
+    const storedTracks = await StorageService.getTracks();
+    expect(storedTracks[0].completedTasks).toBe(18);
+  });
 });
