@@ -114,7 +114,7 @@ export const StorageService = {
     // Filter out corrupted entries and legacy sample data without modifying user data
     return raw.filter((a) => {
       if (!a || typeof a !== 'object') return false;
-      if (a.id && a.id.startsWith('samp-')) return false; // Exclude legacy demo items
+      if (a.id && (a.id.startsWith('samp-') || a.id.startsWith('kk-mlops-'))) return false; // Exclude legacy demo/fabricated items
       return Boolean(a.id && (a.quantity !== undefined));
     });
   },
