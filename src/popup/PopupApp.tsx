@@ -89,12 +89,23 @@ export const PopupApp: React.FC = () => {
     }
   };
 
-  // Helper to send message to tab as Promise
-  const sendTabMessage = (tabId: number, message: any): Promise<any> => {
+  // Helper to send message to tab as Promise with timeout
+  const sendTabMessage = (tabId: number, message: any, timeoutMs = 5000): Promise<any> => {
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error('Timed out waiting for KodeKloud page response.'));
+        }
+      }, timeoutMs);
+
       chrome.tabs.sendMessage(tabId, message, (response) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
+          reject(new Error(chrome.runtime.lastError.message || 'Tab communication error'));
         } else {
           resolve(response);
         }
@@ -102,12 +113,23 @@ export const PopupApp: React.FC = () => {
     });
   };
 
-  // Helper to send message to background worker as Promise
-  const executeBackgroundSync = (payload: any): Promise<any> => {
+  // Helper to send message to background worker as Promise with timeout
+  const executeBackgroundSync = (payload: any, timeoutMs = 8000): Promise<any> => {
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error('Timed out waiting for background synchronization.'));
+        }
+      }, timeoutMs);
+
       chrome.runtime.sendMessage({ type: 'EXECUTE_SYNC', payload }, (bgResponse) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
+          reject(new Error(chrome.runtime.lastError.message || 'Background worker error'));
         } else {
           resolve(bgResponse);
         }
@@ -125,13 +147,27 @@ export const PopupApp: React.FC = () => {
 
       if (!tab?.id || !tab.url || (!tab.url.includes('engineer.kodekloud.com') && !tab.url.includes('kodekloud.com'))) {
         setIsSyncing(false);
+        const existingTracks = await StorageService.getTracks();
         setLastSync({
           status: 'waiting_for_data',
           lastSyncedAt: new Date().toISOString(),
           newActivitiesCount: 0,
           coursesUpdated: 0,
-          message: 'Open engineer.kodekloud.com to sync',
-          tracks: [],
+          message: 'Open engineer.kodekloud.com/practice to sync',
+          tracks: existingTracks,
+          diagnostics: {
+            stage: 'TAB_DETECTION',
+            status: 'FAILED',
+            reason: 'NOT_KODEKLOUD_TAB',
+            url: tab?.url || '',
+            activeTabUrl: tab?.url || '',
+            elementsScanned: 0,
+            cardsDiscovered: 0,
+            strategiesUsed: [],
+            extractionDurationMs: 0,
+            validationWarnings: ['Active tab is not a KodeKloud page'],
+            timestamp: new Date().toISOString(),
+          },
         });
         return;
       }
@@ -139,43 +175,87 @@ export const PopupApp: React.FC = () => {
       console.log('[KodeHub Popup] Requesting progress from tab:', tab.id, tab.url);
 
       let response: any = null;
+      let contentScriptInjected = false;
+      let contentScriptReady = false;
+
+      // Ping to check if content script is active
       try {
-        response = await sendTabMessage(tab.id, { type: 'EXTRACT_PROGRESS' });
-      } catch (err: any) {
-        console.warn('[KodeHub Popup] Initial sendMessage failed, attempting programmatic injection:', err);
-        // Script may not be running in this tab (e.g. tab opened before extension installed/updated)
-        if (chrome.scripting && tab.id) {
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              files: ['content.js'],
-            });
-            console.log('[KodeHub Popup] Content script injected dynamically. Retrying extraction...');
-            // Small pause to allow content script registration
-            await new Promise((res) => setTimeout(res, 150));
-            response = await sendTabMessage(tab.id, { type: 'EXTRACT_PROGRESS' });
-          } catch (injectErr: any) {
-            console.error('[KodeHub Popup] Dynamic script injection failed:', injectErr);
-            throw new Error('Unable to connect to KodeKloud page. Refresh the page.');
-          }
-        } else {
-          throw new Error('Unable to connect to KodeKloud page. Refresh the page.');
+        const ping = await sendTabMessage(tab.id, { type: 'PING' }, 1000);
+        if (ping?.ready || ping?.status === 'ok') {
+          contentScriptReady = true;
+        }
+      } catch {
+        contentScriptReady = false;
+      }
+
+      // If not ready, dynamically inject content script
+      if (!contentScriptReady && chrome.scripting && tab.id) {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content.js'],
+          });
+          contentScriptInjected = true;
+          console.log('[KodeHub Popup] Content script injected dynamically.');
+          await new Promise((res) => setTimeout(res, 200));
+        } catch (injectErr: any) {
+          console.warn('[KodeHub Popup] Dynamic script injection note:', injectErr);
         }
       }
 
-      if (response?.status === 'ok' && Array.isArray(response?.data?.tracks)) {
-        const tracks = response.data.tracks;
+      // Request live extraction
+      try {
+        response = await sendTabMessage(tab.id, { type: 'EXTRACT_PROGRESS' }, 5000);
+      } catch (err: any) {
+        console.error('[KodeHub Popup] EXTRACT_PROGRESS message failed:', err);
+        throw new Error('Unable to connect to KodeKloud page. Refresh the page.');
+      }
+
+      // Handle page loading state gracefully
+      if (response?.status === 'waiting_for_data') {
+        setIsSyncing(false);
+        const existingTracks = await StorageService.getTracks();
+        const waitResult: SyncResult = {
+          status: 'waiting_for_data',
+          lastSyncedAt: new Date().toISOString(),
+          newActivitiesCount: 0,
+          coursesUpdated: 0,
+          message: response.message || 'Page elements are still loading...',
+          tracks: existingTracks,
+          diagnostics: response.diagnostics,
+        };
+        setLastSync(waitResult);
+        await StorageService.saveLastSyncResult(waitResult);
+        return;
+      }
+
+      const tracks = response?.data?.tracks || response?.tracks;
+      const diagnostics = response?.data?.diagnostics || response?.diagnostics;
+      const isSuccess =
+        response &&
+        (response.status === 'ok' || response.status === 'success' || response.success === true) &&
+        Array.isArray(tracks);
+
+      if (isSuccess) {
         console.log(`[KodeHub Popup] Content script returned ${tracks.length} tracks:`, tracks);
 
         if (tracks.length === 0) {
           setIsSyncing(false);
+          const existingTracks = await StorageService.getTracks();
           const emptyResult: SyncResult = {
             status: 'waiting_for_data',
             lastSyncedAt: new Date().toISOString(),
             newActivitiesCount: 0,
             coursesUpdated: 0,
             message: 'No practice courses detected. Go to Practice tab.',
-            tracks: [],
+            tracks: existingTracks,
+            diagnostics: {
+              ...(diagnostics || {}),
+              stage: 'DOM_EXTRACTION',
+              status: 'WAITING_FOR_DATA',
+              reason: 'NO_COURSES_DETECTED',
+              activeTabUrl: tab.url,
+            },
           };
           setLastSync(emptyResult);
           await StorageService.saveLastSyncResult(emptyResult);
@@ -185,26 +265,50 @@ export const PopupApp: React.FC = () => {
         // Delegate authoritative snapshot diffing to background worker
         const bgResponse = await executeBackgroundSync({
           tracks,
-          diagnostics: response.data.diagnostics,
+          diagnostics: {
+            ...(diagnostics || {}),
+            stage: 'BACKGROUND_SYNC',
+            status: 'SUCCESS',
+            contentScriptInjected,
+            contentScriptReady: true,
+            activeTabUrl: tab.url,
+            backgroundResponseReceived: true,
+          },
         });
+
         if (bgResponse?.result) {
           setLastSync(bgResponse.result);
         }
         await loadData();
         setIsSyncing(false);
       } else {
-        throw new Error(response?.error || 'Unable to read practice courses from page.');
+        const errorMsg = response?.error || response?.message || 'Unable to read practice courses from page.';
+        throw new Error(errorMsg);
       }
     } catch (e: any) {
       console.error('[KodeHub Popup] Sync failure:', e);
       setIsSyncing(false);
+      // Preserve existing tracks on failure - NEVER wipe them!
+      const existingTracks = await StorageService.getTracks();
       const failResult: SyncResult = {
         status: 'failed',
         lastSyncedAt: new Date().toISOString(),
         newActivitiesCount: 0,
         coursesUpdated: 0,
         message: e?.message || 'Sync failed. Refresh page.',
-        tracks: [],
+        tracks: existingTracks,
+        diagnostics: {
+          stage: 'DOM_EXTRACTION',
+          status: 'FAILED',
+          reason: e?.message || 'EXTRACTION_FAILURE',
+          url: window.location.href,
+          elementsScanned: 0,
+          cardsDiscovered: existingTracks.length,
+          strategiesUsed: [],
+          extractionDurationMs: 0,
+          validationWarnings: [e?.message || 'Unknown failure'],
+          timestamp: new Date().toISOString(),
+        },
       };
       setLastSync(failResult);
       await StorageService.saveLastSyncResult(failResult);

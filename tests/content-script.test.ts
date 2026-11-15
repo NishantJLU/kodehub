@@ -251,4 +251,82 @@ describe('KodeKloud Content Script - Dynamic Course Discovery & Validation', () 
     expect(snapshot.tracks[0].trackName).toBe('100 Days of MLOps');
     expect(snapshot.tracks[0].completedTasks).toBe(14);
   });
+
+  // 10. Accurate extraction of the 3 real courses with description paragraph & Start button
+  it('accurately extracts MLOps (17/100), DevOps (0/100), and Cloud Azure (0/50) with description text and buttons', () => {
+    const pageText = `
+      KodeKloud Engineer
+      System Administrator 6000/25000 700 coins 0 medals
+      Your Active Practice Completed
+
+      100 Days of MLOps
+      Progress: 17/100 Tasks
+      17 Completed 83 Pending 100 Unlocked 0 Locked
+
+      100 Days of DevOps
+      Progress: 0/100 Tasks
+      0 Completed 100 Pending 100 Unlocked 0 Locked
+
+      100 Days of Cloud (Azure)
+      Basic familiarity with the Azure Portal is required.
+      Beginners are recommended to complete the AZ900: Microsoft Azure Fundamentals first.
+      Start
+      Progress: 0/50 Tasks
+    `;
+
+    (global as any).document = {
+      querySelectorAll: () => [],
+      body: {
+        innerText: pageText,
+      },
+    };
+
+    const { tracks, diagnostics } = discoverVisibleTracksWithDiagnostics();
+
+    expect(tracks.length).toBe(3);
+    expect(diagnostics.stage).toBe('DOM_EXTRACTION');
+    expect(diagnostics.status).toBe('SUCCESS');
+    expect(diagnostics.cardsDiscovered).toBe(3);
+    expect(diagnostics.validCourseCards).toBe(3);
+
+    const mlops = tracks.find((t) => t.trackName === '100 Days of MLOps');
+    expect(mlops).toBeDefined();
+    expect(mlops?.completedTasks).toBe(17);
+    expect(mlops?.totalTasks).toBe(100);
+    expect(mlops?.pendingTasks).toBe(83);
+
+    const devops = tracks.find((t) => t.trackName === '100 Days of DevOps');
+    expect(devops).toBeDefined();
+    expect(devops?.completedTasks).toBe(0);
+    expect(devops?.totalTasks).toBe(100);
+    expect(devops?.pendingTasks).toBe(100);
+
+    const azure = tracks.find((t) => t.trackName === '100 Days of Cloud (Azure)');
+    expect(azure).toBeDefined();
+    expect(azure?.completedTasks).toBe(0);
+    expect(azure?.totalTasks).toBe(50);
+    expect(azure?.pendingTasks).toBe(50);
+  });
+
+  // 11. Button labels and descriptions are never used as course titles
+  it('strictly rejects button labels (Start, Continue, Resume) and description sentences', () => {
+    const invalidNames = [
+      'Start',
+      'Continue',
+      'Resume',
+      'Practice',
+      'Enroll',
+      'Completed',
+      'Basic familiarity with the Azure Portal is required.',
+      'Beginners are recommended to complete the AZ900: Microsoft Azure Fundamentals first.',
+      'Day 25',
+      '100 Tasks',
+    ];
+
+    for (const name of invalidNames) {
+      const res = validateTrackNumbers(name, 5, 10);
+      expect(res.valid).toBe(false);
+      expect(res.warnings.length).toBeGreaterThan(0);
+    }
+  });
 });

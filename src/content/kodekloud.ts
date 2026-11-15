@@ -160,12 +160,19 @@ export function extractCourseId(el: HTMLElement, trackName: string): string | un
 
 /**
  * Checks whether the page is currently in a loading or skeleton state.
+ * If progress elements are already rendered and visible, the page is not in a blocking loading state.
  */
 export function isPageLoading(): boolean {
   if (typeof document === 'undefined') return false;
   if (typeof document.querySelector !== 'function') return false;
+
+  const bodyText = document.body ? (document.body.innerText || document.body.textContent || '') : '';
+  if (/Progress:\s*\d+/i.test(bodyText)) {
+    return false;
+  }
+
   const loader = document.querySelector(
-    '[aria-busy="true"], [class*="skeleton"], [class*="loading-spinner"], [class*="shimmer"], [class*="animate-pulse"]'
+    '[aria-busy="true"], [class*="skeleton"], [class*="loading-spinner"], [class*="shimmer"]'
   );
   return !!loader;
 }
@@ -237,9 +244,9 @@ export function discoverVisibleTracksWithDiagnostics(): {
     // Extract track title from headings, strictly excluding buttons and button-like controls
     let trackName = '';
     const headingElements: Element[] = typeof htmlEl.querySelectorAll === 'function'
-      ? Array.from(htmlEl.querySelectorAll('h1, h2, h3, h4, h5, [class*="title"], [class*="name"]'))
+      ? Array.from(htmlEl.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="title"], [class*="name"], [class*="header"], [class*="heading"], [class*="font-bold"], [class*="font-semibold"], [class*="text-lg"], [class*="text-xl"], [class*="text-2xl"]'))
       : typeof htmlEl.querySelector === 'function'
-      ? [htmlEl.querySelector('h1, h2, h3, h4, h5, [class*="title"], [class*="name"]')].filter(Boolean) as Element[]
+      ? [htmlEl.querySelector('h1, h2, h3, h4, h5, h6, [class*="title"], [class*="name"], [class*="header"], [class*="heading"], [class*="font-bold"], [class*="font-semibold"], [class*="text-lg"], [class*="text-xl"], [class*="text-2xl"]')].filter(Boolean) as Element[]
       : [];
 
     for (const h of headingElements) {
@@ -263,9 +270,9 @@ export function discoverVisibleTracksWithDiagnostics(): {
           break;
         }
         const pHeadingElements: Element[] = typeof parent.querySelectorAll === 'function'
-          ? Array.from(parent.querySelectorAll('h1, h2, h3, h4, h5, [class*="title"], [class*="name"]'))
+          ? Array.from(parent.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="title"], [class*="name"], [class*="header"], [class*="heading"], [class*="font-bold"], [class*="font-semibold"], [class*="text-lg"], [class*="text-xl"], [class*="text-2xl"]'))
           : typeof parent.querySelector === 'function'
-          ? [parent.querySelector('h1, h2, h3, h4, h5, [class*="title"], [class*="name"]')].filter(Boolean) as Element[]
+          ? [parent.querySelector('h1, h2, h3, h4, h5, h6, [class*="title"], [class*="name"], [class*="header"], [class*="heading"], [class*="font-bold"], [class*="font-semibold"], [class*="text-lg"], [class*="text-xl"], [class*="text-2xl"]')].filter(Boolean) as Element[]
           : [];
 
         for (const ph of pHeadingElements) {
@@ -290,7 +297,7 @@ export function discoverVisibleTracksWithDiagnostics(): {
       const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
       const pIdx = lines.findIndex((l: string) => /Progress:\s*\d+/i.test(l));
       if (pIdx > 0) {
-        for (let j = pIdx - 1; j >= 0; j--) {
+        for (let j = pIdx - 1; j >= Math.max(0, pIdx - 6); j--) {
           const cleaned = cleanTrackTitle(lines[j]);
           if (isValidCourseTitle(cleaned) && !cleaned.toLowerCase().includes('progress')) {
             trackName = cleaned;
@@ -347,8 +354,8 @@ export function discoverVisibleTracksWithDiagnostics(): {
     }
   }
 
-  // STRATEGY 2: Line-by-Line Scanner Fallback
-  if (tracksMap.size === 0 && document.body) {
+  // STRATEGY 2: Line-by-Line Scanner Fallback (Discovers any remaining courses)
+  if (document.body) {
     const fullText = document.body.innerText || document.body.textContent || '';
     const lines = fullText.split('\n').map((l) => l.trim()).filter(Boolean);
 
@@ -360,7 +367,7 @@ export function discoverVisibleTracksWithDiagnostics(): {
         const total = parseInt(match[2], 10);
         let title = '';
 
-        for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
+        for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
           const cleaned = cleanTrackTitle(lines[j]);
           if (isValidCourseTitle(cleaned) && !cleaned.toLowerCase().includes('progress')) {
             title = cleaned;
@@ -369,36 +376,37 @@ export function discoverVisibleTracksWithDiagnostics(): {
         }
 
         if (title && isValidCourseTitle(title)) {
-          if (!strategiesUsed.includes('line_scan_fallback')) {
-            strategiesUsed.push('line_scan_fallback');
-          }
+          const trackId = generateStableTrackId(title);
+          if (!tracksMap.has(trackId)) {
+            if (!strategiesUsed.includes('line_scan_fallback')) {
+              strategiesUsed.push('line_scan_fallback');
+            }
 
-          // Check surrounding lines for sub-box metrics
-          const contextLines = lines.slice(i, Math.min(lines.length, i + 5)).join(' ');
-          const pendingMatch = contextLines.match(/(\d+)\s*Pending/i);
-          const unlockedMatch = contextLines.match(/(\d+)\s*Unlocked/i);
-          const lockedMatch = contextLines.match(/(\d+)\s*Locked/i);
+            // Check surrounding lines for sub-box metrics
+            const contextLines = lines.slice(i, Math.min(lines.length, i + 8)).join(' ');
+            const pendingMatch = contextLines.match(/(\d+)\s*Pending/i);
+            const unlockedMatch = contextLines.match(/(\d+)\s*Unlocked/i);
+            const lockedMatch = contextLines.match(/(\d+)\s*Locked/i);
 
-          const pending = pendingMatch ? parseInt(pendingMatch[1], 10) : Math.max(0, total - completed);
-          const unlocked = unlockedMatch ? parseInt(unlockedMatch[1], 10) : undefined;
-          const locked = lockedMatch ? parseInt(lockedMatch[1], 10) : undefined;
+            const pending = pendingMatch ? parseInt(pendingMatch[1], 10) : Math.max(0, total - completed);
+            const unlocked = unlockedMatch ? parseInt(unlockedMatch[1], 10) : undefined;
+            const locked = lockedMatch ? parseInt(lockedMatch[1], 10) : undefined;
 
-          const validated = validateTrackNumbers(
-            title,
-            completed,
-            total,
-            pending,
-            unlocked,
-            locked
-          );
+            const validated = validateTrackNumbers(
+              title,
+              completed,
+              total,
+              pending,
+              unlocked,
+              locked
+            );
 
-          if (validated.warnings.length > 0) {
-            validationWarnings.push(...validated.warnings);
-          }
+            if (validated.warnings.length > 0) {
+              validationWarnings.push(...validated.warnings);
+            }
 
-          if (validated.valid && validated.track) {
-            const t = validated.track;
-            if (!tracksMap.has(t.trackId)) {
+            if (validated.valid && validated.track) {
+              const t = validated.track;
               tracksMap.set(t.trackId, t);
               console.log(`[KodeHub Content] Discovered track via line scan: "${t.trackName}" (${t.completedTasks}/${t.totalTasks} completed)`);
             }
@@ -410,13 +418,24 @@ export function discoverVisibleTracksWithDiagnostics(): {
 
   const result = Array.from(tracksMap.values());
   const elapsed = Date.now() - startTime;
+  const isPracticePage = typeof window !== 'undefined' && window.location ? (window.location.href.includes('engineer.kodekloud.com') || window.location.href.includes('practice')) : false;
 
   const diagnostics: ExtractionDiagnostics = {
+    stage: 'DOM_EXTRACTION',
+    status: result.length > 0 ? 'SUCCESS' : 'FAILED',
+    reason: result.length > 0 ? undefined : 'COURSE_CARDS_NOT_FOUND',
     elementsScanned,
     cardsDiscovered: result.length,
+    courseCardsFound: result.length + (validationWarnings.length > 0 ? 1 : 0),
+    validCourseCards: result.length,
+    invalidCourseCards: validationWarnings.length,
+    progressValuesExtracted: result.length,
     strategiesUsed,
     extractionDurationMs: elapsed,
     validationWarnings,
+    practicePageDetected: isPracticePage,
+    domReady: typeof document !== 'undefined' && document.readyState === 'complete',
+    contentScriptReady: true,
     url: typeof window !== 'undefined' && window.location ? window.location.href : '',
     timestamp: new Date().toISOString(),
   };
@@ -498,38 +517,87 @@ export async function extractPlatformSnapshotWithRetry(
 /**
  * Listens for synchronization extraction requests from popup or background worker.
  */
-if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === 'PING') {
-      sendResponse({ status: 'ok', url: window.location.href });
-      return false;
-    }
+const globalScope: any = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : null);
+const currentUrl = typeof window !== 'undefined' && window.location ? window.location.href : '';
 
-    if (request.type === 'EXTRACT_PROGRESS') {
-      try {
-        if (isPageLoading()) {
-          sendResponse({
-            status: 'waiting_for_data',
-            message: 'KodeKloud page is still loading elements...',
-            tracks: [],
-          });
-          return false;
-        }
+if (globalScope && typeof globalScope.__KODEHUB_CONTENT_SCRIPT_INITIALIZED === 'undefined') {
+  globalScope.__KODEHUB_CONTENT_SCRIPT_INITIALIZED = true;
 
-        const snapshot = getPlatformSnapshot();
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.type === 'PING') {
         sendResponse({
-          status: snapshot.tracks.length > 0 ? 'success' : 'empty',
-          data: snapshot,
+          status: 'ok',
+          success: true,
+          ready: true,
+          url: currentUrl,
         });
-      } catch (err: any) {
-        sendResponse({
-          status: 'error',
-          error: err?.message || 'Error extracting learning metrics',
-        });
+        return false;
       }
-      return false;
-    }
 
-    return false;
-  });
+      if (request.type === 'EXTRACT_PROGRESS') {
+        try {
+          if (isPageLoading()) {
+            sendResponse({
+              status: 'waiting_for_data',
+              success: false,
+              message: 'KodeKloud page is still loading elements...',
+              tracks: [],
+              data: { tracks: [] },
+              diagnostics: {
+                stage: 'DOM_EXTRACTION',
+                status: 'WAITING_FOR_DATA',
+                reason: 'PAGE_IS_LOADING',
+                url: currentUrl,
+                timestamp: new Date().toISOString(),
+                elementsScanned: 0,
+                cardsDiscovered: 0,
+                strategiesUsed: [],
+                extractionDurationMs: 0,
+                validationWarnings: ['Page is currently displaying loading skeletons'],
+              },
+            });
+            return false;
+          }
+
+          const snapshot = getPlatformSnapshot();
+          const hasTracks = snapshot.tracks.length > 0;
+
+          sendResponse({
+            status: 'ok',
+            success: true,
+            data: snapshot,
+            tracks: snapshot.tracks,
+            diagnostics: snapshot.diagnostics,
+            message: hasTracks
+              ? `Discovered ${snapshot.tracks.length} course(s)`
+              : 'No practice courses found on page',
+          });
+        } catch (err: any) {
+          sendResponse({
+            status: 'error',
+            success: false,
+            error: err?.message || 'Error extracting learning metrics',
+            data: { tracks: [] },
+            tracks: [],
+            diagnostics: {
+              stage: 'DOM_EXTRACTION',
+              status: 'FAILED',
+              reason: err?.message || 'EXTRACTION_EXCEPTION',
+              url: currentUrl,
+              timestamp: new Date().toISOString(),
+              elementsScanned: 0,
+              cardsDiscovered: 0,
+              strategiesUsed: [],
+              extractionDurationMs: 0,
+              validationWarnings: [err?.message || 'Unknown extraction error'],
+            },
+          });
+        }
+        return false;
+      }
+
+      return false;
+    });
+  }
 }

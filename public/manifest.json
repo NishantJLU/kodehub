@@ -25,7 +25,8 @@
     "unlimitedStorage",
     "alarms",
     "activeTab",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
     "*://engineer.kodekloud.com/*",

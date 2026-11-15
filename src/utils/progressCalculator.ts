@@ -65,13 +65,21 @@ export const INVALID_COURSE_NAMES = new Set([
 
 export function isValidCourseTitle(name: string): boolean {
   if (!name) return false;
-  const clean = name.trim().toLowerCase();
-  if (clean.length < 3) return false;
+  const raw = name.trim();
+  const clean = raw.toLowerCase();
+  if (clean.length < 3 || clean.length > 80) return false;
   if (INVALID_COURSE_NAMES.has(clean)) return false;
   if (/^(?:start|continue|resume|practice|enroll|explore|view|details|review|completed)$/i.test(clean)) {
     return false;
   }
+  // Exclude sentence descriptions ending in period or exclamation mark
+  if (/[.!?]$/.test(raw)) return false;
+  // Exclude prerequisite/description clauses
+  if (/\b(?:recommended|familiarity|prerequisite|required|fundamentals first|portal is)\b/i.test(clean)) {
+    return false;
+  }
   if (/^day\s*\d+$/i.test(clean)) return false;
   if (/^\d+\s*tasks?$/i.test(clean)) return false;
+  if (/^\d+$/i.test(clean)) return false;
   return true;
 }

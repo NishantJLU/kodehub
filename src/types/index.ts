@@ -35,12 +35,25 @@ export interface DailyActivity {
 export type LearningActivity = DailyActivity;
 
 export interface ExtractionDiagnostics {
+  stage?: 'TAB_DETECTION' | 'CONTENT_SCRIPT_INJECTION' | 'DOM_EXTRACTION' | 'COURSE_VALIDATION' | 'BACKGROUND_SYNC' | 'COMPLETED';
+  status?: 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'WAITING_FOR_DATA';
+  reason?: string;
+  activeTabUrl?: string;
+  url: string;
+  contentScriptInjected?: boolean;
+  contentScriptReady?: boolean;
+  domReady?: boolean;
+  practicePageDetected?: boolean;
+  courseCardsFound?: number;
+  validCourseCards?: number;
+  invalidCourseCards?: number;
+  progressValuesExtracted?: number;
+  backgroundResponseReceived?: boolean;
   elementsScanned: number;
   cardsDiscovered: number;
   strategiesUsed: string[];
   extractionDurationMs: number;
   validationWarnings: string[];
-  url: string;
   timestamp: string;
 }
 
