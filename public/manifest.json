@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "KodeHub - Learning Progress Tracker",
+  "version": "1.0.0",
+  "description": "Track your learning, measure your progress. Daily stats, streaks, labs, and question tracker for KodeKloud learners.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "KodeHub - Learning Dashboard",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "dashboard.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "alarms",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://engineer.kodekloud.com/*",
+    "*://*.kodekloud.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://engineer.kodekloud.com/*",
+        "*://*.kodekloud.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
