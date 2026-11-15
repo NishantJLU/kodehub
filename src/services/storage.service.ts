@@ -1,4 +1,15 @@
-import { DailyActivity, Course, LearningGoals, AppSettings, TrackSnapshot, TrackProgress, SyncResult } from '../types';
+import {
+  DailyActivity,
+  Course,
+  LearningGoals,
+  AppSettings,
+  TrackSnapshot,
+  TrackProgress,
+  SyncResult,
+  GitHubConfig,
+  GitHubCommitRecord,
+} from '../types';
+import { calculateProgressMetrics, isValidCourseTitle } from '../utils/progressCalculator';
 
 const DEFAULT_GOALS: LearningGoals = {
   dailyQuestions: 15,
@@ -149,19 +160,47 @@ export const StorageService = {
 
   // Track Progress List
   async getTracks(): Promise<TrackProgress[]> {
-    return getStorageItem<TrackProgress[]>('tracks', []);
+    const raw = await getStorageItem<TrackProgress[]>('tracks', []);
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((t) => t && t.trackName && isValidCourseTitle(t.trackName))
+      .map((t) => {
+        const metrics = calculateProgressMetrics(t.completedTasks, t.totalTasks);
+        return {
+          ...t,
+          completedTasks: metrics.completedTasks,
+          totalTasks: metrics.totalTasks,
+          pendingTasks: metrics.pendingTasks,
+        };
+      });
   },
 
   async saveTracks(tracks: TrackProgress[]): Promise<void> {
-    await setStorageItem('tracks', tracks);
+    const valid = tracks
+      .filter((t) => t && t.trackName && isValidCourseTitle(t.trackName))
+      .map((t) => {
+        const metrics = calculateProgressMetrics(t.completedTasks, t.totalTasks);
+        return {
+          ...t,
+          completedTasks: metrics.completedTasks,
+          totalTasks: metrics.totalTasks,
+          pendingTasks: metrics.pendingTasks,
+        };
+      });
+    await setStorageItem('tracks', valid);
   },
 
   // Courses
   async getCourses(): Promise<Course[]> {
-    return getStorageItem<Course[]>('courses', []);
+    const raw = await getStorageItem<Course[]>('courses', []);
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((c) => c && c.name && isValidCourseTitle(c.name));
   },
 
   async saveCourse(course: Course): Promise<void> {
+    if (!course || !course.name || !isValidCourseTitle(course.name)) {
+      return;
+    }
     const courses = await this.getCourses();
     const exists = courses.some((c) => c.name.toLowerCase() === course.name.toLowerCase() || c.id === course.id);
     if (!exists) {
@@ -290,5 +329,29 @@ export const StorageService = {
     await setStorageItem('trackSnapshots', {});
     await setStorageItem('tracks', []);
     await setStorageItem('lastSyncResult', null);
+  },
+
+  // GitHub Integration Config
+  async getGitHubConfig(): Promise<GitHubConfig | null> {
+    return getStorageItem<GitHubConfig | null>('githubConfig', null);
+  },
+
+  async saveGitHubConfig(config: GitHubConfig | null): Promise<void> {
+    await setStorageItem('githubConfig', config);
+  },
+
+  async clearGitHubConfig(): Promise<void> {
+    await setStorageItem('githubConfig', null);
+  },
+
+  // GitHub Commit & Sync History
+  async getGitHubHistory(): Promise<GitHubCommitRecord[]> {
+    return getStorageItem<GitHubCommitRecord[]>('githubHistory', []);
+  },
+
+  async saveGitHubCommitRecord(record: GitHubCommitRecord): Promise<void> {
+    const history = await this.getGitHubHistory();
+    const updated = [record, ...history.filter((h) => h.id !== record.id)].slice(0, 50);
+    await setStorageItem('githubHistory', updated);
   },
 };

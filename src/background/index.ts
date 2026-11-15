@@ -1,7 +1,9 @@
 // KodeHub Background Service Worker (Manifest V3)
-import { TrackProgress, SyncResult } from '../types';
+import { TrackProgress, SyncResult, GitHubConfig } from '../types';
 import { StorageService } from '../services/storage.service';
 import { processSyncSnapshots } from '../services/sync.service';
+import { GitHubService } from '../services/github.service';
+import { toLocalDateString } from '../utils/dateUtils';
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log('[KodeHub] Extension initialized / updated:', details.reason);
@@ -37,10 +39,10 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 });
 
-// Update badge count with today's completed tasks + questions
+// Update badge count with today's verified completed tasks
 export async function updateBadge() {
   try {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = toLocalDateString(new Date());
     const settings = await StorageService.getSettings();
 
     if (settings && settings.showBadge === false) {
@@ -52,7 +54,7 @@ export async function updateBadge() {
     const goals = await StorageService.getGoals();
 
     const todayCount = activities
-      .filter((a) => a.completedAt && a.completedAt.slice(0, 10) === todayStr)
+      .filter((a) => a.completedAt && toLocalDateString(a.completedAt) === todayStr)
       .reduce((sum, a) => sum + (Number(a.quantity) || 1), 0);
 
     if (todayCount > 0) {
@@ -74,14 +76,11 @@ export async function updateBadge() {
 // Mutex lock to prevent overlapping sync operations
 let isSyncInProgress = false;
 
-/**
- * Authoritative Synchronization Handler:
- * 1. Reads incoming fresh snapshots from verified tab.
- * 2. Compares against previously stored snapshots.
- * 3. Identifies true delta increase in completed tasks.
- * 4. Stores updated snapshots & records new activities without fabrication.
- */
-export async function handleVerifiedSync(incomingTracks: TrackProgress[]): Promise<SyncResult> {
+// Authoritative Synchronization Handler
+export async function handleVerifiedSync(
+  incomingTracks: TrackProgress[],
+  diagnostics?: any
+): Promise<SyncResult> {
   const now = new Date().toISOString();
 
   if (!incomingTracks || incomingTracks.length === 0) {
@@ -92,6 +91,7 @@ export async function handleVerifiedSync(incomingTracks: TrackProgress[]): Promi
       coursesUpdated: 0,
       message: 'No visible tracks detected on page',
       tracks: [],
+      diagnostics,
     };
     await StorageService.saveLastSyncResult(failedResult);
     return failedResult;
@@ -99,13 +99,16 @@ export async function handleVerifiedSync(incomingTracks: TrackProgress[]): Promi
 
   if (isSyncInProgress) {
     const prev = await StorageService.getLastSyncResult();
-    return prev || {
-      status: 'successful',
-      lastSyncedAt: now,
-      newActivitiesCount: 0,
-      coursesUpdated: 0,
-      tracks: incomingTracks,
-    };
+    return (
+      prev || {
+        status: 'successful',
+        lastSyncedAt: now,
+        newActivitiesCount: 0,
+        coursesUpdated: 0,
+        tracks: incomingTracks,
+        diagnostics,
+      }
+    );
   }
 
   isSyncInProgress = true;
@@ -141,6 +144,7 @@ export async function handleVerifiedSync(incomingTracks: TrackProgress[]): Promi
       newActivitiesCount: syncOutcome.newCompletionsCount,
       coursesUpdated: syncOutcome.coursesUpdatedCount,
       tracks: incomingTracks,
+      diagnostics,
       message:
         syncOutcome.newCompletionsCount > 0
           ? `${syncOutcome.newCompletionsCount} new task completion(s) recorded`
@@ -149,6 +153,52 @@ export async function handleVerifiedSync(incomingTracks: TrackProgress[]): Promi
 
     await StorageService.saveLastSyncResult(syncResult);
     await updateBadge();
+
+    // Trigger GitHub auto-sync if enabled and configured
+    try {
+      const ghConfig = await StorageService.getGitHubConfig();
+      if (ghConfig && ghConfig.token && ghConfig.selectedRepo && ghConfig.autoSync) {
+        console.log('[KodeHub Background] Triggering automatic GitHub sync...');
+        const goals = (await StorageService.getGoals()) || {
+          dailyQuestions: 15,
+          dailyLabs: 2,
+          dailyLessons: 3,
+          dailyLearningMinutes: 120,
+          weeklyQuestions: 75,
+          weeklyLabs: 10,
+        };
+        const allActivities = await StorageService.getActivities();
+        const ghResult = await GitHubService.syncProgressToGitHub(
+          ghConfig,
+          incomingTracks,
+          allActivities,
+          goals
+        );
+
+        if (ghResult.success) {
+          const updatedConfig: GitHubConfig = {
+            ...ghConfig,
+            lastSyncAt: now,
+            lastSyncCommitSha: ghResult.lastCommitSha || ghConfig.lastSyncCommitSha,
+            lastSyncCommitUrl: ghResult.lastCommitUrl || ghConfig.lastSyncCommitUrl,
+          };
+          await StorageService.saveGitHubConfig(updatedConfig);
+          if (ghResult.commitsCreated > 0) {
+            await StorageService.saveGitHubCommitRecord({
+              id: `gh-auto-${Date.now()}`,
+              timestamp: now,
+              commitSha: ghResult.lastCommitSha || 'auto-sync',
+              commitUrl: ghResult.lastCommitUrl || ghConfig.selectedRepo.html_url,
+              commitMessage: syncResult.message || 'KodeHub: Auto-sync progress',
+              filesChanged: ghResult.filesUpdated,
+              status: 'success',
+            });
+          }
+        }
+      }
+    } catch (ghErr) {
+      console.warn('[KodeHub Background] GitHub auto-sync skipped / error:', ghErr);
+    }
 
     return syncResult;
   } catch (err: any) {
@@ -160,6 +210,7 @@ export async function handleVerifiedSync(incomingTracks: TrackProgress[]): Promi
       coursesUpdated: 0,
       message: err.message || 'Synchronization failed',
       tracks: incomingTracks,
+      diagnostics,
     };
     await StorageService.saveLastSyncResult(errorResult);
     return errorResult;
@@ -185,10 +236,74 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     updateBadge();
     sendResponse({ status: 'ok' });
   } else if (message.type === 'EXECUTE_SYNC') {
-    handleVerifiedSync(message.payload).then((result) => {
-      sendResponse({ status: 'ok', result });
-    });
+    const tracks = Array.isArray(message.payload) ? message.payload : message.payload?.tracks || [];
+    const diagnostics = message.payload?.diagnostics;
+    console.log('[KodeHub Background] Received EXECUTE_SYNC request for tracks:', tracks.length);
+    handleVerifiedSync(tracks, diagnostics)
+      .then((result) => {
+        console.log('[KodeHub Background] EXECUTE_SYNC completed with status:', result.status);
+        sendResponse({ status: 'ok', result });
+      })
+      .catch((err) => {
+        console.error('[KodeHub Background] EXECUTE_SYNC failed:', err);
+        sendResponse({
+          status: 'error',
+          error: err?.message || 'Sync failed in background worker',
+        });
+      });
     return true; // Keep channel open for async response
+  } else if (message.type === 'SYNC_GITHUB') {
+    (async () => {
+      try {
+        const ghConfig = await StorageService.getGitHubConfig();
+        if (!ghConfig || !ghConfig.token || !ghConfig.selectedRepo) {
+          sendResponse({ status: 'error', error: 'GitHub repository not configured' });
+          return;
+        }
+
+        const tracks = await StorageService.getTracks();
+        const activities = await StorageService.getActivities();
+        const goals = (await StorageService.getGoals()) || {
+          dailyQuestions: 15,
+          dailyLabs: 2,
+          dailyLessons: 3,
+          dailyLearningMinutes: 120,
+          weeklyQuestions: 75,
+          weeklyLabs: 10,
+        };
+
+        const ghResult = await GitHubService.syncProgressToGitHub(ghConfig, tracks, activities, goals);
+        const now = new Date().toISOString();
+
+        if (ghResult.success) {
+          const updatedConfig: GitHubConfig = {
+            ...ghConfig,
+            lastSyncAt: now,
+            lastSyncCommitSha: ghResult.lastCommitSha || ghConfig.lastSyncCommitSha,
+            lastSyncCommitUrl: ghResult.lastCommitUrl || ghConfig.lastSyncCommitUrl,
+          };
+          await StorageService.saveGitHubConfig(updatedConfig);
+
+          if (ghResult.commitsCreated > 0) {
+            await StorageService.saveGitHubCommitRecord({
+              id: `gh-sync-${Date.now()}`,
+              timestamp: now,
+              commitSha: ghResult.lastCommitSha || 'manual-sync',
+              commitUrl: ghResult.lastCommitUrl || ghConfig.selectedRepo.html_url,
+              commitMessage: ghResult.message,
+              filesChanged: ghResult.filesUpdated,
+              status: 'success',
+            });
+          }
+        }
+
+        sendResponse({ status: 'ok', result: ghResult });
+      } catch (err: any) {
+        console.error('[KodeHub Background] SYNC_GITHUB failed:', err);
+        sendResponse({ status: 'error', error: err?.message || 'GitHub sync failed' });
+      }
+    })();
+    return true;
   }
   return true;
 });

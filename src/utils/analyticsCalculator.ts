@@ -48,10 +48,10 @@ export function calculateDailyStats(
   }
 
   const dailyGoal = goals?.dailyQuestions || 15;
-  // Progress towards daily goal considers verified tasks and questions solved
-  const primaryProgressCount = tasksCompleted + questionsSolved;
-  const progressPercent = dailyGoal > 0 ? Math.min(100, Math.round((primaryProgressCount / dailyGoal) * 100)) : 0;
-  const remainingQuestions = Math.max(0, dailyGoal - primaryProgressCount);
+  // Progress towards daily goal uses verified tasksCompleted when available; falls back to questionsSolved if only questions exist (never combines them)
+  const progressCount = tasksCompleted > 0 ? tasksCompleted : questionsSolved;
+  const progressPercent = dailyGoal > 0 ? Math.min(100, Math.round((progressCount / dailyGoal) * 100)) : 0;
+  const remainingTasks = Math.max(0, dailyGoal - progressCount);
 
   return {
     tasksCompleted,
@@ -62,7 +62,8 @@ export function calculateDailyStats(
     learningTimeMinutes,
     dailyGoal,
     progressPercent,
-    remainingQuestions,
+    remainingTasks,
+    remainingQuestions: remainingTasks,
     totalActivitiesCount: dayActivities.length,
   };
 }

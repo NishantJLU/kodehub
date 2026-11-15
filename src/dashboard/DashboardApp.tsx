@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   RotateCcw,
+  Github,
 } from 'lucide-react';
 import {
   BarChart,
@@ -57,8 +58,9 @@ import { ActivityLogModal } from '../components/ActivityLogModal';
 import { EditActivityModal } from '../components/EditActivityModal';
 import { StudyTimer } from '../components/StudyTimer';
 import { HeatmapGrid } from '../components/HeatmapGrid';
+import { GitHubIntegrationView } from '../components/GitHubIntegrationView';
 
-type Tab = 'overview' | 'log' | 'analytics' | 'courses' | 'goals' | 'settings';
+type Tab = 'overview' | 'log' | 'analytics' | 'courses' | 'goals' | 'github' | 'settings';
 
 export const DashboardApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
@@ -309,6 +311,21 @@ export const DashboardApp: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab('github')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition ${
+                activeTab === 'github'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#182234]'
+              }`}
+            >
+              <Github className="w-4 h-4" />
+              <span>GitHub Sync</span>
+              <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-md bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 font-medium">
+                Repo
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('settings')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition ${
                 activeTab === 'settings'
@@ -353,6 +370,7 @@ export const DashboardApp: React.FC = () => {
               {activeTab === 'analytics' && 'Learning Analytics & Trends'}
               {activeTab === 'courses' && 'Active Courses & Certifications'}
               {activeTab === 'goals' && 'Learning Goals & Targets'}
+              {activeTab === 'github' && 'GitHub Repository Synchronization'}
               {activeTab === 'settings' && 'Data Management & Extension Settings'}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">{formatHeaderDate(now)}</p>
@@ -970,6 +988,16 @@ export const DashboardApp: React.FC = () => {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* ===================== TAB: GITHUB INTEGRATION ===================== */}
+          {activeTab === 'github' && (
+            <GitHubIntegrationView
+              tracks={tracks}
+              activities={activities}
+              goals={goals}
+              onNotification={showNotification}
+            />
           )}
 
           {/* ===================== TAB 6: SETTINGS ===================== */}
