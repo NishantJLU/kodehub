@@ -1,8 +1,8 @@
-import { LearningActivity, LearningGoals, DailyStats, WeeklyDayStat, HeatmapDay } from '../types';
+import { DailyActivity, LearningGoals, DailyStats, WeeklyDayStat, HeatmapDay } from '../types';
 import { toLocalDateString } from './dateUtils';
 
 export function calculateDailyStats(
-  activities: LearningActivity[],
+  activities: DailyActivity[],
   goals: LearningGoals,
   baseDate: Date = new Date()
 ): DailyStats {
@@ -12,10 +12,10 @@ export function calculateDailyStats(
     return a.completedAt && toLocalDateString(a.completedAt) === targetDateStr;
   });
 
+  let tasksCompleted = 0;
   let questionsSolved = 0;
   let labsCompleted = 0;
   let lessonsCompleted = 0;
-  let tasksCompleted = 0;
   let mockExamsCompleted = 0;
   let learningTimeMinutes = 0;
 
@@ -24,7 +24,12 @@ export function calculateDailyStats(
     const duration = Number(act.durationMinutes) || 0;
     learningTimeMinutes += duration;
 
-    switch (act.type) {
+    const type = act.activityType || (act as any).type;
+
+    switch (type) {
+      case 'task':
+        tasksCompleted += qty;
+        break;
       case 'question':
         questionsSolved += qty;
         break;
@@ -33,9 +38,6 @@ export function calculateDailyStats(
         break;
       case 'lesson':
         lessonsCompleted += qty;
-        break;
-      case 'task':
-        tasksCompleted += qty;
         break;
       case 'mock_exam':
         mockExamsCompleted += qty;
@@ -46,37 +48,35 @@ export function calculateDailyStats(
   }
 
   const dailyGoal = goals?.dailyQuestions || 15;
-  const progressPercent = dailyGoal > 0 ? Math.min(100, Math.round((questionsSolved / dailyGoal) * 100)) : 0;
-  const remainingQuestions = Math.max(0, dailyGoal - questionsSolved);
+  // Progress towards daily goal considers verified tasks and questions solved
+  const primaryProgressCount = tasksCompleted + questionsSolved;
+  const progressPercent = dailyGoal > 0 ? Math.min(100, Math.round((primaryProgressCount / dailyGoal) * 100)) : 0;
+  const remainingQuestions = Math.max(0, dailyGoal - primaryProgressCount);
 
   return {
+    tasksCompleted,
     questionsSolved,
     labsCompleted,
     lessonsCompleted,
-    tasksCompleted,
     mockExamsCompleted,
     learningTimeMinutes,
     dailyGoal,
     progressPercent,
     remainingQuestions,
+    totalActivitiesCount: dayActivities.length,
   };
 }
 
 /**
- * Returns the 7-day activity sequence matching the screenshot.
- * Displays Monday through Sunday of current week (or rolling last 7 days ending today).
+ * Returns the 7-day activity sequence matching Monday -> Sunday.
  */
 export function calculateWeeklyActivity(
-  activities: LearningActivity[],
+  activities: DailyActivity[],
   baseDate: Date = new Date()
 ): WeeklyDayStat[] {
-  // We compute the current week's Monday through Sunday
-  // or rolling last 7 days. Looking at the screenshot, the labels are "M", "T", "W", "T", "F", "S", "S".
-  // This corresponds directly to Monday -> Sunday!
   const currentDayOfWeek = baseDate.getDay(); // 0 is Sunday, 1 is Monday ...
-  // Calculate distance back to Monday (Monday = 1)
-  const distToMonday = (currentDayOfWeek + 6) % 7; // Monday -> 0, Tuesday -> 1 ... Sunday -> 6
-  
+  const distToMonday = (currentDayOfWeek + 6) % 7;
+
   const monday = new Date(baseDate);
   monday.setDate(monday.getDate() - distToMonday);
 
@@ -93,6 +93,7 @@ export function calculateWeeklyActivity(
 
     const dayActs = activities.filter((a) => a.completedAt && toLocalDateString(a.completedAt) === dateStr);
 
+    let tasks = 0;
     let questions = 0;
     let labs = 0;
     let lessons = 0;
@@ -101,15 +102,19 @@ export function calculateWeeklyActivity(
     for (const act of dayActs) {
       const qty = Number(act.quantity) || 1;
       durationMinutes += Number(act.durationMinutes) || 0;
-      if (act.type === 'question') questions += qty;
-      else if (act.type === 'lab') labs += qty;
-      else if (act.type === 'lesson') lessons += qty;
+      const type = act.activityType || (act as any).type;
+
+      if (type === 'task') tasks += qty;
+      else if (type === 'question') questions += qty;
+      else if (type === 'lab') labs += qty;
+      else if (type === 'lesson') lessons += qty;
     }
 
     result.push({
       dateStr,
       dayLetter: dayLetters[i],
       dayName: dayNames[i],
+      tasks,
       questions,
       labs,
       lessons,
@@ -126,23 +131,25 @@ export function calculateWeeklyActivity(
  * Returns GitHub-style contribution heatmap days for the last N weeks (e.g. 16 weeks ~ 4 months)
  */
 export function calculateHeatmap(
-  activities: LearningActivity[],
+  activities: DailyActivity[],
   weeksCount: number = 16,
   baseDate: Date = new Date()
 ): HeatmapDay[] {
   const days: HeatmapDay[] = [];
   const totalDays = weeksCount * 7;
 
-  // Activity counts mapped by local date string
-  const countsByDate = new Map<string, { total: number; questions: number; labs: number }>();
+  const countsByDate = new Map<string, { total: number; tasks: number; questions: number; labs: number }>();
   activities.forEach((a) => {
     if (!a.completedAt) return;
     const d = toLocalDateString(a.completedAt);
-    const curr = countsByDate.get(d) || { total: 0, questions: 0, labs: 0 };
+    const curr = countsByDate.get(d) || { total: 0, tasks: 0, questions: 0, labs: 0 };
     const qty = Number(a.quantity) || 1;
     curr.total += qty;
-    if (a.type === 'question') curr.questions += qty;
-    if (a.type === 'lab') curr.labs += qty;
+
+    const type = a.activityType || (a as any).type;
+    if (type === 'task') curr.tasks += qty;
+    if (type === 'question') curr.questions += qty;
+    if (type === 'lab') curr.labs += qty;
     countsByDate.set(d, curr);
   });
 
@@ -150,7 +157,7 @@ export function calculateHeatmap(
     const d = new Date(baseDate);
     d.setDate(d.getDate() - i);
     const dateStr = toLocalDateString(d);
-    const data = countsByDate.get(dateStr) || { total: 0, questions: 0, labs: 0 };
+    const data = countsByDate.get(dateStr) || { total: 0, tasks: 0, questions: 0, labs: 0 };
 
     let level: 0 | 1 | 2 | 3 | 4 = 0;
     if (data.total >= 13) level = 4;
@@ -161,6 +168,7 @@ export function calculateHeatmap(
     days.push({
       date: dateStr,
       count: data.total,
+      tasks: data.tasks,
       questions: data.questions,
       labs: data.labs,
       level,
@@ -172,6 +180,7 @@ export function calculateHeatmap(
 
 export interface CourseDistribution {
   courseName: string;
+  tasks: number;
   questions: number;
   labs: number;
   durationMinutes: number;
@@ -179,23 +188,28 @@ export interface CourseDistribution {
   percentage: number;
 }
 
-export function calculateCourseDistribution(activities: LearningActivity[]): CourseDistribution[] {
-  const map = new Map<string, { questions: number; labs: number; duration: number; count: number }>();
+export function calculateCourseDistribution(activities: DailyActivity[]): CourseDistribution[] {
+  const map = new Map<string, { tasks: number; questions: number; labs: number; duration: number; count: number }>();
 
-  let totalQuestions = 0;
+  let totalCompletions = 0;
 
   activities.forEach((a) => {
     const course = a.courseName?.trim() || 'General / Unassigned';
-    const entry = map.get(course) || { questions: 0, labs: 0, duration: 0, count: 0 };
+    const entry = map.get(course) || { tasks: 0, questions: 0, labs: 0, duration: 0, count: 0 };
     const qty = Number(a.quantity) || 1;
     const dur = Number(a.durationMinutes) || 0;
 
     entry.count += 1;
     entry.duration += dur;
-    if (a.type === 'question') {
+
+    const type = a.activityType || (a as any).type;
+    if (type === 'task') {
+      entry.tasks += qty;
+      totalCompletions += qty;
+    } else if (type === 'question') {
       entry.questions += qty;
-      totalQuestions += qty;
-    } else if (a.type === 'lab') {
+      totalCompletions += qty;
+    } else if (type === 'lab') {
       entry.labs += qty;
     }
     map.set(course, entry);
@@ -203,9 +217,11 @@ export function calculateCourseDistribution(activities: LearningActivity[]): Cou
 
   const list: CourseDistribution[] = [];
   map.forEach((val, name) => {
-    const pct = totalQuestions > 0 ? Math.round((val.questions / totalQuestions) * 100) : 0;
+    const totalForCourse = val.tasks + val.questions;
+    const pct = totalCompletions > 0 ? Math.round((totalForCourse / totalCompletions) * 100) : 0;
     list.push({
       courseName: name,
+      tasks: val.tasks,
       questions: val.questions,
       labs: val.labs,
       durationMinutes: val.duration,
@@ -214,5 +230,5 @@ export function calculateCourseDistribution(activities: LearningActivity[]): Cou
     });
   });
 
-  return list.sort((a, b) => b.questions - a.questions);
+  return list.sort((a, b) => b.tasks + b.questions - (a.tasks + a.questions));
 }

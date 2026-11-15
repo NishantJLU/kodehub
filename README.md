@@ -1,72 +1,67 @@
 # KodeHub 🚀
 > **Track Your Learning. Measure Your Progress.**  
-> A personal progress-tracking Chrome Extension (Manifest V3) designed for KodeKloud learners.
+> A personal progress-tracking Chrome Extension (Manifest V3) for KodeKloud learners.
 
 ---
 
 ## 🌟 Highlights & Features
 
-- **Quick Extension Popup (Matching UI Design)**:
-  - Header with app brand, "Learning dashboard" and "Active" status indicator.
+- **Accurate Progress Snapshot Synchronization**:
+  - **Snapshot-Based Diffing**: Compares verified course snapshots against previously stored baselines to detect newly completed tasks.
+  - **No Fabricated History**: Initial sync establishes a true baseline without falsely assuming historical completions occurred today.
+  - **Dynamic Course Discovery**: Automatically discovers any visible track on `engineer.kodekloud.com/practice` without hardcoded course name lists.
+  - **User-Initiated & Safe**: Operates directly on the user's active page upon request without intercepting private APIs, scraping behind gates, or reading cookies.
+  - **Separate Metrics**: Keeps **Tasks Completed** (verified platform tasks) strictly separate from **Questions Solved** (manually logged or verified questions).
+
+- **Quick Extension Popup**:
+  - Header with app brand, last sync status timestamp, and active status indicator.
   - Dynamic greeting based on current local hour (e.g. *Good morning!*, *Sunday, November 15 · Your daily progress*).
   - 4 Real-time Metric Cards:
-    - **Questions solved** (`</>` icon)
-    - **Labs completed** (Flask icon)
-    - **Lessons completed** (Book icon)
-    - **Learning time** (Clock icon)
-  - **Daily Question Goal Progress Bar**: Target tracking with percentage completion and remaining question count.
+    - **Tasks completed** (Verified from KodeKloud practice tracks)
+    - **Labs completed** (Hands-on labs)
+    - **Lessons completed** (Topics and modules)
+    - **Learning time** (Tracked study minutes)
+  - **Daily Target Goal Progress Bar**: Target tracking with percentage completion and remaining count.
   - **Weekly Activity Chart**: 7-day bar chart showing activity volume for Mon through Sun (`M`, `T`, `W`, `T`, `F`, `S`, `S`).
   - **Streak Tracker**: Consecutive day streak counter with flame indicator and all-time longest streak.
-  - Quick action buttons to open log modal and launch the full dashboard.
 
 - **Fast Activity Logger**:
   - Support for **Question Solved**, **Lab Completed**, **Lesson Completed**, **Task**, and **Mock Exam**.
-  - **Quick Count Mode** (log batch of solved questions in seconds) or **Individual Detailed Question Mode**.
+  - **Quick Count Mode** or **Single Detailed Question Mode**.
   - Course selector with inline "+ Add New Course" capability.
   - Duration timer, notes, and topic fields.
 
 - **Full-Page Learning Dashboard (`dashboard.html`)**:
   - **Overview**: Daily summary, interactive Focus Study Timer with real-time tracking, recent activity feed, and weekly charts.
-  - **Activity Log**: Searchable and filterable table (by type, course, title, notes), edit modal, and delete with 5-second undo toast.
+  - **Activity Log**: Searchable and filterable table (by type, course, title, notes), edit modal, and delete with undo toast.
   - **Analytics & Trends**: Recharts weekly bar charts, 16-week GitHub-style contribution heatmap (5 activity intensity levels), and course distribution breakdown.
-  - **Courses Manager**: Track progress per certification track (e.g., CKA, DCA, Terraform, Linux Basics).
+  - **Courses & Tracks**: Shows real completed, pending, and total task counts per discovered track.
   - **Goals & Targets**: Customize daily question target, daily labs, and study duration.
-  - **Data Management**: Full JSON backup export/import, CSV activity export for Excel/Google Sheets, realistic sample dataset loader, and reset tools.
-
-- **Architecture & Privacy**:
-  - **Zero Scraping / Safe Manifest V3**: Operates locally without injecting DOM scripts or reading private credentials.
-  - **Local-First Storage**: Uses `chrome.storage.local` with fallback for development and testing.
-  - **Extension Icon Badge**: Automatically reflects today's questions solved count on the Chrome toolbar.
+  - **Data Management**: Full JSON backup export/import, CSV activity export for Excel/Google Sheets, and reset tools.
 
 ---
 
-## 📦 How to Install and Run in Google Chrome
+## 📦 How to Install and Run in Google Chrome / Brave
 
 1. **Build the extension**:
    ```bash
    cd /Users/nishantsingh/Documents/Projects/kodehub
    npm run build
    ```
-   This generates the production-ready extension in the `dist/` folder.
+   This compiles the extension into the `dist/` directory.
 
-2. **Load into Chrome**:
-   - Open Google Chrome and navigate to `chrome://extensions/`.
+2. **Load into Browser**:
+   - Open Google Chrome or Brave and go to `chrome://extensions/` (or `brave://extensions/`).
    - Enable **Developer mode** in the top right corner.
    - Click **Load unpacked**.
    - Select the `/Users/nishantsingh/Documents/Projects/kodehub/dist` folder.
-   - Pin **KodeHub** to your browser toolbar!
+   - Pin **KodeHub** to your browser toolbar.
 
-3. **Development Mode**:
-   ```bash
-   npm run dev
-   ```
-   Opens Vite dev server for rapid UI development and testing.
-
-4. **Run Tests**:
+3. **Run Tests**:
    ```bash
    npm test
    ```
-   Runs Vitest calculation, streak, and storage unit tests.
+   Runs Vitest test suites verifying snapshot diffing, streak calculation, and storage persistence.
 
 ---
 

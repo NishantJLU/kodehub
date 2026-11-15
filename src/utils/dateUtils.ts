@@ -26,7 +26,7 @@ export function formatHeaderDate(date: Date = new Date()): string {
   return `${dayName}, ${monthName} ${dayNum} · Your daily progress`;
 }
 
-export function formatDuration(minutes: number): string {
+export function formatDuration(minutes?: number): string {
   if (!minutes || minutes <= 0) return '0m';
   const hrs = Math.floor(minutes / 60);
   const mins = minutes % 60;

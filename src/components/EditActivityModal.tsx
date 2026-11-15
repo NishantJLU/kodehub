@@ -50,7 +50,7 @@ export const EditActivityModal: React.FC<Props> = ({
       const courseName = selectedCourse ? selectedCourse.name : activity.courseName;
 
       await StorageService.updateActivity(activity.id, {
-        courseId,
+        trackId: courseId,
         courseName,
         title: title.trim(),
         module: module.trim() || undefined,

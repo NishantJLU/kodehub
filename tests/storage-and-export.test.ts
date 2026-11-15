@@ -37,13 +37,14 @@ describe('Storage and Data Export', () => {
   it('saves real activities and exports valid JSON and CSV', async () => {
     const act: LearningActivity = {
       id: 'kk-1',
-      courseId: 'c-mlops',
+      trackId: 'c-mlops',
       courseName: '100 Days of MLOps',
-      type: 'question',
+      activityType: 'task',
       title: 'MLOps Task 11 Completed',
       quantity: 11,
       durationMinutes: 165,
       completedAt: new Date().toISOString(),
+      source: 'verified_platform',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -56,7 +57,7 @@ describe('Storage and Data Export', () => {
     // Test JSON export
     const jsonStr = await StorageService.exportDataJSON();
     const parsed = JSON.parse(jsonStr);
-    expect(parsed.version).toBe('1.0.0');
+    expect(parsed.version).toBe('2.0.0');
     expect(parsed.activities.length).toBe(1);
 
     // Test CSV export
@@ -77,24 +78,25 @@ describe('Storage and Data Export', () => {
     expect(restored[0].courseName).toBe('100 Days of MLOps');
   });
 
-  it('purges any sample data starting with samp-', async () => {
+  it('excludes legacy sample data starting with samp- without altering legitimate user records', async () => {
     const sampleAct: any = {
       id: 'samp-99',
+      trackId: 'c-sample',
       courseName: 'Sample Mock Course',
-      type: 'question',
+      activityType: 'question',
       quantity: 10,
     };
     const realAct: any = {
       id: 'kk-real-1',
+      trackId: 'c-mlops',
       courseName: '100 Days of MLOps',
-      type: 'question',
+      activityType: 'task',
       quantity: 11,
     };
 
     await StorageService.saveActivity(sampleAct);
     await StorageService.saveActivity(realAct);
 
-    await StorageService.purgeSampleData();
     const activities = await StorageService.getActivities();
     expect(activities.some((a) => a.id.startsWith('samp-'))).toBe(false);
     expect(activities.some((a) => a.id === 'kk-real-1')).toBe(true);

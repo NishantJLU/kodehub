@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Pause, RotateCcw, Check, Sparkles, Clock, Flame } from 'lucide-react';
-import { Course, LearningActivity } from '../types';
+import { Course, LearningActivity, DailyActivity } from '../types';
 import { StorageService } from '../services/storage.service';
 
 interface Props {
@@ -53,14 +53,15 @@ export const StudyTimer: React.FC<Props> = ({ courses, onSessionLogged }) => {
     const selectedCourse = courses.find((c) => c.id === selectedCourseId);
     const courseName = selectedCourse ? selectedCourse.name : 'General Learning';
 
-    const newActivity: LearningActivity = {
+    const newActivity: DailyActivity = {
       id: `timer-${Date.now()}`,
-      courseId: selectedCourseId || 'c-gen',
+      trackId: selectedCourseId || 'c-gen',
       courseName,
-      type: 'other',
+      activityType: 'other',
       title: sessionTopic.trim() || `Focus Study Session (${elapsedMinutes}m)`,
       quantity: 1,
       durationMinutes: elapsedMinutes,
+      source: 'manual',
       notes: `Recorded via KodeHub Study Timer`,
       completedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),

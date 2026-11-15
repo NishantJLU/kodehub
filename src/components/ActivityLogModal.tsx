@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Check, Plus, BookOpen, Beaker, Code2, CheckSquare, Award, Clock } from 'lucide-react';
-import { ActivityType, LearningActivity, Course } from '../types';
+import { ActivityType, LearningActivity, DailyActivity, Course } from '../types';
 import { StorageService } from '../services/storage.service';
 
 interface Props {
@@ -69,11 +69,11 @@ export const ActivityLogModal: React.FC<Props> = ({
         other: 'General Learning Session',
       };
 
-      const activity: LearningActivity = {
+      const activity: DailyActivity = {
         id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        courseId: courseId || 'c-gen',
+        trackId: courseId || 'c-gen',
         courseName,
-        type,
+        activityType: type,
         title: title.trim() || defaultTitleByType[type],
         module: module.trim() || undefined,
         quantity: finalQuantity,
@@ -82,6 +82,7 @@ export const ActivityLogModal: React.FC<Props> = ({
         durationMinutes: Number(durationMinutes) || 0,
         notes: notes.trim() || undefined,
         completedAt: new Date().toISOString(),
+        source: 'manual',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

@@ -1,172 +1,159 @@
-// KodeHub Content Script for KodeKloud & KodeKloud Engineer
-// Automatically detects and syncs real learning progress from live DOM
+// KodeHub Content Script for KodeKloud Engineer
+// Extracts visible learning progress dynamically upon user request
 
-export interface TrackProgress {
-  trackName: string;
-  completedTasks: number;
-  totalTasks: number;
-  pendingTasks: number;
-  unlockedTasks: number;
-}
+import { TrackProgress } from '../types';
+import { generateStableTrackId } from '../services/sync.service';
 
-export interface ScrapedData {
+export interface ScrapedPlatformData {
   url: string;
   userName?: string;
   rank?: string;
   coins?: number;
-  xp?: string;
   tracks: TrackProgress[];
-  totalCompletedAllTracks: number;
-  timestamp: string;
+  scrapedAt: string;
 }
 
-export function scrapeKodeKloudData(): ScrapedData {
-  const url = window.location.href;
-  const tracks: TrackProgress[] = [];
-  const textContent = document.body ? document.body.innerText || '' : '';
+/**
+ * Dynamically discovers all visible course cards on the page.
+ * Extracts title, completed tasks, total tasks, and pending tasks.
+ * Does NOT rely on hardcoded course names.
+ */
+export function discoverVisibleTracks(): TrackProgress[] {
+  const tracksMap = new Map<string, TrackProgress>();
+  const now = new Date().toISOString();
 
-  // Known track titles on engineer.kodekloud.com
-  const candidateTracks = [
-    '100 Days of MLOps',
-    '100 Days of DevOps',
-    '100 Days of Cloud (Azure)',
-    '100 Days of Cloud',
-    '100 Days of Kubernetes',
-    '100 Days of Linux',
-    '100 Days of Docker',
-    '100 Days of Python',
-    '100 Days of Golang',
-    '100 Days of Terraform',
-  ];
+  // Find all elements that contain a progress pattern like "Progress: 12/100 Tasks"
+  const candidates = Array.from(document.querySelectorAll('div, section, article'));
 
-  // 1. First method: Scan through text for each track
-  candidateTracks.forEach((trackTitle) => {
-    // Regex looking for track block:
-    // e.g. "100 Days of MLOps ... Progress: 11/100 Tasks ... 11 Completed"
-    const escaped = trackTitle.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const trackRegex = new RegExp(
-      `${escaped}[\\s\\S]{0,400}?Progress:\\s*(\\d+)\\s*\\/\\s*(\\d+)[\\s\\S]{0,200}?(\\d+)?\\s*Completed?`,
-      'i'
-    );
-    const match = textContent.match(trackRegex);
+  for (const el of candidates) {
+    const text = (el as HTMLElement).innerText || '';
 
-    let completed = 0;
-    let total = 100;
+    // Check if this element directly contains "Progress: X/Y"
+    const progressMatch = text.match(/Progress:\s*(\d+)\s*\/\s*(\d+)\s*(?:Tasks?)?/i);
+    if (!progressMatch) continue;
 
-    if (match) {
-      completed = parseInt(match[1] || match[3] || '0', 10);
-      total = parseInt(match[2] || '100', 10);
+    // Avoid matching parent wrapper containers that contain multiple cards
+    // A card container should only have one "Progress:" line
+    const progressOccurrences = (text.match(/Progress:/gi) || []).length;
+    if (progressOccurrences > 1) {
+      continue; // Skip outer container; inner elements will be processed
+    }
+
+    const completedTasks = parseInt(progressMatch[1], 10);
+    const totalTasks = parseInt(progressMatch[2], 10);
+
+    // Extract pending tasks count if visible, e.g. "88 Pending"
+    const pendingMatch = text.match(/(\d+)\s*Pending/i);
+    const pendingTasks = pendingMatch ? parseInt(pendingMatch[1], 10) : Math.max(0, totalTasks - completedTasks);
+
+    // Extract title from headings inside this card, or text preceding "Progress:"
+    let trackName = '';
+    const heading = el.querySelector('h1, h2, h3, h4, h5, [class*="title"], [class*="name"]');
+    if (heading && heading.textContent?.trim()) {
+      trackName = heading.textContent.trim();
     } else {
-      // Secondary check: look for "XX Completed" immediately following track name
-      const altRegex = new RegExp(`${escaped}[\\s\\S]{0,250}?(\\d+)\\s*Completed`, 'i');
-      const altMatch = textContent.match(altRegex);
-      if (altMatch) {
-        completed = parseInt(altMatch[1], 10);
+      // Look at lines before "Progress:"
+      const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      const progressLineIdx = lines.findIndex((l) => l.startsWith('Progress:'));
+      if (progressLineIdx > 0) {
+        trackName = lines[progressLineIdx - 1];
       }
     }
 
-    if (match || textContent.includes(trackTitle)) {
-      tracks.push({
-        trackName: trackTitle,
-        completedTasks: completed,
-        totalTasks: total,
-        pendingTasks: Math.max(0, total - completed),
-        unlockedTasks: total,
-      });
-    }
-  });
+    // Clean up track title
+    trackName = trackName
+      .replace(/^Your Active Practice\s*/i, '')
+      .replace(/\s*Completed$/i, '')
+      .trim();
 
-  // 2. Also check individual DOM elements for dynamically rendered card containers
-  const cardElements = document.querySelectorAll('div, section, article');
-  cardElements.forEach((el) => {
-    const elText = (el as HTMLElement).innerText || '';
-    if (elText.includes('100 Days of') && elText.includes('Progress:')) {
-      const titleMatch = elText.match(/(100 Days of [A-Za-z0-9\s()]+)/i);
-      const progressMatch = elText.match(/Progress:\s*(\d+)\s*\/\s*(\d+)/i);
-      if (titleMatch && progressMatch) {
-        const name = titleMatch[1].trim();
-        const done = parseInt(progressMatch[1], 10);
-        const tot = parseInt(progressMatch[2], 10);
-        const existing = tracks.find((t) => t.trackName.toLowerCase() === name.toLowerCase());
-        if (existing) {
-          existing.completedTasks = Math.max(existing.completedTasks, done);
-        } else {
-          tracks.push({
-            trackName: name,
+    if (trackName && trackName.length > 2) {
+      const trackId = generateStableTrackId(trackName);
+      if (!tracksMap.has(trackId)) {
+        tracksMap.set(trackId, {
+          trackId,
+          trackName,
+          completedTasks,
+          totalTasks,
+          pendingTasks,
+          lastSyncedAt: now,
+        });
+      }
+    }
+  }
+
+  // Fallback: If no structured cards matched, check regex across page text
+  if (tracksMap.size === 0 && document.body) {
+    const bodyText = document.body.innerText || '';
+    // Look for patterns like "100 Days of MLOps\nProgress: 12/100 Tasks"
+    const regex = /([A-Za-z0-9\s()\-]{4,50})\s*\n?\s*Progress:\s*(\d+)\s*\/\s*(\d+)/gi;
+    let m;
+    while ((m = regex.exec(bodyText)) !== null) {
+      const title = m[1].trim();
+      const done = parseInt(m[2], 10);
+      const tot = parseInt(m[3], 10);
+      if (title && !title.toLowerCase().includes('progress')) {
+        const trackId = generateStableTrackId(title);
+        if (!tracksMap.has(trackId)) {
+          tracksMap.set(trackId, {
+            trackId,
+            trackName: title,
             completedTasks: done,
             totalTasks: tot,
             pendingTasks: Math.max(0, tot - done),
-            unlockedTasks: tot,
+            lastSyncedAt: now,
           });
         }
       }
     }
-  });
-
-  // 3. User metadata
-  let userName = 'Nishant Singh';
-  if (textContent.includes('Nishant Singh')) {
-    userName = 'Nishant Singh';
   }
 
-  let rank = 'System Administrator';
-  ['System Administrator', 'DevOps Engineer', 'Cloud Architect', 'Beginner'].forEach((r) => {
-    if (textContent.includes(r)) rank = r;
-  });
+  return Array.from(tracksMap.values());
+}
 
-  let coins = 650;
-  const coinsMatch = textContent.match(/(\d+)\s*coins?/i) || textContent.match(/(\d{3,4})\s*(?:\n|\s)*?(?:gold|coins?)/i);
-  if (coinsMatch) {
-    coins = parseInt(coinsMatch[1], 10);
+/**
+ * Extracts student metadata (user name, rank, coins) if visible.
+ */
+export function extractStudentMetadata() {
+  const text = document.body ? document.body.innerText || '' : '';
+  let userName: string | undefined;
+  let rank: string | undefined;
+  let coins: number | undefined;
+
+  const coinsMatch = text.match(/(\d{2,5})\s*(?:coins?|gold)?/i);
+  if (coinsMatch) coins = parseInt(coinsMatch[1], 10);
+
+  const ranks = ['System Administrator', 'DevOps Engineer', 'Cloud Architect', 'Beginner'];
+  for (const r of ranks) {
+    if (text.includes(r)) {
+      rank = r;
+      break;
+    }
   }
 
-  const totalCompletedAllTracks = tracks.reduce((sum, t) => sum + t.completedTasks, 0);
+  return { userName, rank, coins };
+}
+
+/**
+ * Collect full platform snapshot.
+ */
+export function getPlatformSnapshot(): ScrapedPlatformData {
+  const tracks = discoverVisibleTracks();
+  const meta = extractStudentMetadata();
 
   return {
-    url,
-    userName,
-    rank,
-    coins,
+    url: window.location.href,
+    userName: meta.userName,
+    rank: meta.rank,
+    coins: meta.coins,
     tracks,
-    totalCompletedAllTracks,
-    timestamp: new Date().toISOString(),
+    scrapedAt: new Date().toISOString(),
   };
 }
 
-// Automatically sync when on page
-function autoSyncToExtension() {
-  try {
-    const data = scrapeKodeKloudData();
-    if (chrome?.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({
-        type: 'KODEKLOUD_PROGRESS_SYNC',
-        payload: data,
-      });
-    }
-  } catch (err) {
-    // Extension context invalidated during reload
-  }
-}
-
-// Initial sync
-setTimeout(autoSyncToExtension, 1000);
-setTimeout(autoSyncToExtension, 3000);
-
-// Observer for SPA changes
-let observerTimer: any = null;
-const observer = new MutationObserver(() => {
-  clearTimeout(observerTimer);
-  observerTimer = setTimeout(autoSyncToExtension, 2500);
-});
-
-if (document.body) {
-  observer.observe(document.body, { childList: true, subtree: true });
-}
-
-// Message listener from popup
+// Listen for sync extraction requests from the extension popup / background worker
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'EXTRACT_PROGRESS') {
-    const data = scrapeKodeKloudData();
+    const data = getPlatformSnapshot();
     sendResponse({ status: 'ok', data });
   }
   return true;

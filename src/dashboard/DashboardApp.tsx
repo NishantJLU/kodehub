@@ -34,6 +34,8 @@ import {
 } from 'recharts';
 import {
   LearningActivity,
+  DailyActivity,
+  TrackProgress,
   Course,
   LearningGoals,
   DailyStats,
@@ -84,19 +86,22 @@ export const DashboardApp: React.FC = () => {
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all');
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
 
+  const [tracks, setTracks] = useState<TrackProgress[]>([]);
+
   // Load state
   const loadAllData = async () => {
     try {
-      await StorageService.purgeSampleData();
-      const [storedActivities, storedCourses, storedGoals] = await Promise.all([
+      const [storedActivities, storedCourses, storedGoals, storedTracks] = await Promise.all([
         StorageService.getActivities(),
         StorageService.getCourses(),
         StorageService.getGoals(),
+        StorageService.getTracks(),
       ]);
 
       setActivities(storedActivities);
       setCourses(storedCourses);
       setGoals(storedGoals);
+      setTracks(storedTracks);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     }
@@ -192,24 +197,26 @@ export const DashboardApp: React.FC = () => {
 
   // Overall totals
   const totalQuestionsAllTime = activities
-    .filter((a) => a.type === 'question')
+    .filter((a) => (a.activityType || a.type) === 'question' || (a.activityType || a.type) === 'task')
     .reduce((sum, a) => sum + (Number(a.quantity) || 1), 0);
   const totalLabsAllTime = activities
-    .filter((a) => a.type === 'lab')
+    .filter((a) => (a.activityType || a.type) === 'lab')
     .reduce((sum, a) => sum + (Number(a.quantity) || 1), 0);
   const totalStudyMinutesAllTime = activities.reduce((sum, a) => sum + (Number(a.durationMinutes) || 0), 0);
 
   // Filtered activities
   const filteredActivities = activities.filter((act) => {
+    const title = act.title || '';
     const matchesSearch =
       searchQuery === '' ||
-      act.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (act.courseName && act.courseName.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (act.module && act.module.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (act.notes && act.notes.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesType = selectedTypeFilter === 'all' || act.type === selectedTypeFilter;
-    const matchesCourse = selectedCourseFilter === 'all' || act.courseId === selectedCourseFilter;
+    const actType = act.activityType || act.type;
+    const matchesType = selectedTypeFilter === 'all' || actType === selectedTypeFilter;
+    const matchesCourse = selectedCourseFilter === 'all' || (act.trackId || act.courseId) === selectedCourseFilter;
 
     return matchesSearch && matchesType && matchesCourse;
   });
@@ -393,16 +400,16 @@ export const DashboardApp: React.FC = () => {
               <div className="grid grid-cols-4 gap-4">
                 <div className="bg-[#161f30] border border-[#233047] rounded-2xl p-5 shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400 font-medium">Questions Solved Today</span>
+                    <span className="text-xs text-slate-400 font-medium">Tasks Completed Today</span>
                     <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
                       <Code2 className="w-4 h-4" />
                     </div>
                   </div>
                   <div className="text-3xl font-bold text-white mt-2 tracking-tight">
-                    {dailyStats.questionsSolved}
+                    {dailyStats.tasksCompleted}
                   </div>
                   <div className="text-xs text-indigo-300 mt-1">
-                    Goal: {dailyStats.dailyGoal} questions ({dailyStats.progressPercent}%)
+                    {dailyStats.questionsSolved > 0 ? `+ ${dailyStats.questionsSolved} questions · ` : ''}Goal: {dailyStats.dailyGoal} ({dailyStats.progressPercent}%)
                   </div>
                 </div>
 
@@ -529,13 +536,14 @@ export const DashboardApp: React.FC = () => {
                         >
                           <div className="flex items-start gap-3">
                             <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-300 flex items-center justify-center shrink-0 mt-0.5">
-                              {act.type === 'question' && <Code2 className="w-4 h-4" />}
-                              {act.type === 'lab' && <FlaskConical className="w-4 h-4" />}
-                              {act.type === 'lesson' && <BookOpen className="w-4 h-4" />}
-                              {act.type === 'other' && <Clock className="w-4 h-4" />}
+                              {(act.activityType || act.type) === 'task' && <Code2 className="w-4 h-4" />}
+                              {(act.activityType || act.type) === 'question' && <Code2 className="w-4 h-4" />}
+                              {(act.activityType || act.type) === 'lab' && <FlaskConical className="w-4 h-4" />}
+                              {(act.activityType || act.type) === 'lesson' && <BookOpen className="w-4 h-4" />}
+                              {(act.activityType || act.type) === 'other' && <Clock className="w-4 h-4" />}
                             </div>
                             <div>
-                              <div className="text-xs font-semibold text-white">{act.title}</div>
+                              <div className="text-xs font-semibold text-white">{act.title || act.courseName}</div>
                               <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
                                 <span>{act.courseName}</span>
                                 <span>•</span>
@@ -545,8 +553,10 @@ export const DashboardApp: React.FC = () => {
                           </div>
 
                           <div className="text-right shrink-0">
-                            {act.type === 'question' && (
-                              <div className="text-xs font-bold text-indigo-300">+{act.quantity} Q</div>
+                            {((act.activityType || act.type) === 'question' || (act.activityType || act.type) === 'task') && (
+                              <div className="text-xs font-bold text-indigo-300">
+                                +{act.quantity} {(act.activityType || act.type) === 'task' ? 'Tasks' : 'Q'}
+                              </div>
                             )}
                             <div className="text-[11px] text-slate-400">{formatDuration(act.durationMinutes)}</div>
                           </div>
@@ -643,23 +653,25 @@ export const DashboardApp: React.FC = () => {
                         <td className="py-3.5 px-4">
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
-                              act.type === 'question'
+                              (act.activityType || act.type) === 'task'
                                 ? 'bg-indigo-950/80 text-indigo-300 border border-indigo-800/80'
-                                : act.type === 'lab'
+                                : (act.activityType || act.type) === 'question'
+                                ? 'bg-blue-950/80 text-blue-300 border border-blue-800/80'
+                                : (act.activityType || act.type) === 'lab'
                                 ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-800/80'
-                                : act.type === 'lesson'
+                                : (act.activityType || act.type) === 'lesson'
                                 ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/80'
                                 : 'bg-slate-800 text-slate-300 border border-slate-700'
                             }`}
                           >
-                            {act.type.replace('_', ' ')}
+                            {((act.activityType || act.type) || 'task').replace('_', ' ')}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 font-medium text-white max-w-[200px] truncate">
                           {act.courseName}
                         </td>
                         <td className="py-3.5 px-4">
-                          <div className="font-semibold text-slate-200">{act.title}</div>
+                          <div className="font-semibold text-slate-200">{act.title || act.courseName}</div>
                           {act.module && (
                             <div className="text-[11px] text-slate-500">Module: {act.module}</div>
                           )}
@@ -800,45 +812,90 @@ export const DashboardApp: React.FC = () => {
           {activeTab === 'courses' && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                {courses.map((course) => {
-                  const courseActivities = activities.filter((a) => a.courseId === course.id);
-                  const questions = courseActivities
-                    .filter((a) => a.type === 'question')
-                    .reduce((sum, a) => sum + (Number(a.quantity) || 1), 0);
-                  const labs = courseActivities
-                    .filter((a) => a.type === 'lab')
-                    .reduce((sum, a) => sum + (Number(a.quantity) || 1), 0);
-
-                  return (
-                    <div
-                      key={course.id}
-                      className="bg-[#161f30] border border-[#233047] rounded-2xl p-5 shadow-sm flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/80">
-                            {course.category || 'Certification'}
-                          </span>
-                          <span className="text-xs text-slate-500 font-mono">
-                            {courseActivities.length} logs
-                          </span>
-                        </div>
-                        <h4 className="text-sm font-bold text-white mb-2">{course.name}</h4>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#1f293d] text-xs">
+                {tracks.length > 0
+                  ? tracks.map((track) => (
+                      <div
+                        key={track.trackId}
+                        className="bg-[#161f30] border border-[#233047] rounded-2xl p-5 shadow-sm flex flex-col justify-between"
+                      >
                         <div>
-                          <span className="text-slate-400 block text-[11px]">Questions Solved</span>
-                          <span className="text-base font-bold text-indigo-300">{questions}</span>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/80">
+                              Practice Track
+                            </span>
+                            <span className="text-xs text-slate-500 font-mono">
+                              {track.completedTasks}/{track.totalTasks} Tasks
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-white mb-2">{track.trackName}</h4>
+                          <div className="h-2 w-full bg-[#1f2b42] rounded-full overflow-hidden my-3">
+                            <div
+                              className="h-full bg-[#818cf8] rounded-full"
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.round((track.completedTasks / (track.totalTasks || 100)) * 100)
+                                )}%`,
+                              }}
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-slate-400 block text-[11px]">Labs Completed</span>
-                          <span className="text-base font-bold text-cyan-300">{labs}</span>
+
+                        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[#1f293d] text-xs">
+                          <div>
+                            <span className="text-slate-400 block text-[11px]">Completed</span>
+                            <span className="text-base font-bold text-emerald-400">{track.completedTasks}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[11px]">Pending</span>
+                            <span className="text-base font-bold text-slate-300">{track.pendingTasks}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[11px]">Total Tasks</span>
+                            <span className="text-base font-bold text-indigo-300">{track.totalTasks}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    ))
+                  : courses.map((course) => {
+                      const courseActivities = activities.filter((a) => (a.trackId || a.courseId) === course.id);
+                      const questions = courseActivities
+                        .filter((a) => a.activityType === 'question' || (a as any).type === 'question')
+                        .reduce((sum, a) => sum + (Number(a.quantity) || 1), 0);
+                      const labs = courseActivities
+                        .filter((a) => a.activityType === 'lab' || (a as any).type === 'lab')
+                        .reduce((sum, a) => sum + (Number(a.quantity) || 1), 0);
+
+                      return (
+                        <div
+                          key={course.id}
+                          className="bg-[#161f30] border border-[#233047] rounded-2xl p-5 shadow-sm flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/80">
+                                {course.category || 'Certification'}
+                              </span>
+                              <span className="text-xs text-slate-500 font-mono">
+                                {courseActivities.length} logs
+                              </span>
+                            </div>
+                            <h4 className="text-sm font-bold text-white mb-2">{course.name}</h4>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#1f293d] text-xs">
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">Questions Solved</span>
+                              <span className="text-base font-bold text-indigo-300">{questions}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[11px]">Labs Completed</span>
+                              <span className="text-base font-bold text-cyan-300">{labs}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
               </div>
             </div>
           )}

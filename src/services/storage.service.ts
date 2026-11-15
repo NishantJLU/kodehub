@@ -1,4 +1,4 @@
-import { LearningActivity, Course, LearningGoals, AppSettings } from '../types';
+import { DailyActivity, Course, LearningGoals, AppSettings, TrackSnapshot, TrackProgress, SyncResult } from '../types';
 
 const DEFAULT_GOALS: LearningGoals = {
   dailyQuestions: 15,
@@ -14,18 +14,19 @@ const DEFAULT_SETTINGS: AppSettings = {
   showBadge: true,
   notificationsEnabled: false,
   streakFreezeDays: 1,
+  autoSync: false,
 };
 
 // Check if chrome.storage.local is available
-const isChromeStorageAvailable = (): boolean => {
+export const isChromeStorageAvailable = (): boolean => {
   return typeof chrome !== 'undefined' && !!chrome.storage && !!chrome.storage.local;
 };
 
 // In-memory fallback for headless/Node/Vitest environments
-const memoryStore = new Map<string, string>();
+export const memoryStore = new Map<string, string>();
 
 // Generic storage getters/setters
-async function getStorageItem<T>(key: string, defaultValue: T): Promise<T> {
+export async function getStorageItem<T>(key: string, defaultValue: T): Promise<T> {
   if (isChromeStorageAvailable()) {
     return new Promise((resolve) => {
       chrome.storage.local.get([key], (result) => {
@@ -63,7 +64,7 @@ async function getStorageItem<T>(key: string, defaultValue: T): Promise<T> {
   return defaultValue;
 }
 
-async function setStorageItem<T>(key: string, value: T): Promise<void> {
+export async function setStorageItem<T>(key: string, value: T): Promise<void> {
   if (isChromeStorageAvailable()) {
     return new Promise((resolve, reject) => {
       chrome.storage.local.set({ [key]: value }, () => {
@@ -91,90 +92,45 @@ async function setStorageItem<T>(key: string, value: T): Promise<void> {
 }
 
 export const StorageService = {
-  // Purge any old sample data and return only real user data
-  async purgeSampleData(): Promise<void> {
-    const rawActivities = await getStorageItem<LearningActivity[]>('activities', []);
-    const realActivities = rawActivities.filter((a) => !a.id.startsWith('samp-'));
-    if (rawActivities.length !== realActivities.length) {
-      await setStorageItem('activities', realActivities);
+  // Validate and read activities without fabricating data
+  async getActivities(): Promise<DailyActivity[]> {
+    const raw = await getStorageItem<DailyActivity[]>('activities', []);
+    if (!Array.isArray(raw)) {
+      console.warn('[Storage] Corrupted activities data found, returning empty array');
+      return [];
     }
 
-    // Also remove sample courses if they have no real activities
-    const courses = await getStorageItem<Course[]>('courses', []);
-    const filteredCourses = courses.filter((c) => !c.id.startsWith('c-samp-'));
-    await setStorageItem('courses', filteredCourses);
-
-    await this.sanitizeAndRepair();
+    // Filter out corrupted entries and legacy sample data without modifying user data
+    return raw.filter((a) => {
+      if (!a || typeof a !== 'object') return false;
+      if (a.id && a.id.startsWith('samp-')) return false; // Exclude legacy demo items
+      return Boolean(a.id && (a.quantity !== undefined));
+    });
   },
 
-  // Repair duplicate sync entries (e.g. 35 -> 2 today, 10 historical)
-  async sanitizeAndRepair(): Promise<void> {
-    const raw = await getStorageItem<LearningActivity[]>('activities', []);
-    let activities = raw.filter((a) => !a.id.startsWith('samp-'));
-
-    const mlopsActs = activities.filter((a) => a.courseName?.toLowerCase().includes('mlops'));
-    const totalMlops = mlopsActs.reduce((sum, a) => sum + (Number(a.quantity) || 1), 0);
-
-    if (totalMlops > 12 || mlopsActs.length > 2) {
-      const clean = activities.filter((a) => !a.courseName?.toLowerCase().includes('mlops'));
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      clean.push({
-        id: 'kk-mlops-historical',
-        courseId: 'c-mlops',
-        courseName: '100 Days of MLOps',
-        type: 'question',
-        title: '100 Days of MLOps - Previous Completed Tasks',
-        module: 'Practice Track',
-        quantity: 10,
-        durationMinutes: 150,
-        completedAt: yesterday.toISOString(),
-        createdAt: yesterday.toISOString(),
-        updatedAt: yesterday.toISOString(),
-        notes: 'Historical tasks completed on KodeKloud',
-      });
-
-      clean.push({
-        id: 'kk-mlops-today',
-        courseId: 'c-mlops',
-        courseName: '100 Days of MLOps',
-        type: 'question',
-        title: '100 Days of MLOps - 2 Tasks Solved Today',
-        module: 'Practice Track',
-        quantity: 2,
-        durationMinutes: 30,
-        completedAt: today.toISOString(),
-        createdAt: today.toISOString(),
-        updatedAt: today.toISOString(),
-        notes: 'Tasks solved today on KodeKloud Engineer',
-      });
-
-      await setStorageItem('activities', clean);
-    }
-  },
-
-  // Activities
-  async getActivities(): Promise<LearningActivity[]> {
-    const raw = await getStorageItem<LearningActivity[]>('activities', []);
-    // Ensure zero sample data
-    return raw.filter((a) => !a.id.startsWith('samp-'));
-  },
-
-  async saveActivity(activity: LearningActivity): Promise<void> {
+  async saveActivity(activity: DailyActivity): Promise<void> {
     const activities = await this.getActivities();
-    const updated = [activity, ...activities.filter((a) => a.id !== activity.id)];
+    // Idempotent upsert: if activity ID exists, update it; otherwise append
+    const existingIdx = activities.findIndex((a) => a.id === activity.id);
+    let updated: DailyActivity[];
+    if (existingIdx >= 0) {
+      updated = [...activities];
+      updated[existingIdx] = activity;
+    } else {
+      updated = [activity, ...activities];
+    }
     await setStorageItem('activities', updated);
   },
 
-  async updateActivity(id: string, updates: Partial<LearningActivity>): Promise<void> {
+  async updateActivity(id: string, updates: Partial<DailyActivity>): Promise<void> {
     const activities = await this.getActivities();
-    const updated = activities.map((a) => (a.id === id ? { ...a, ...updates, updatedAt: new Date().toISOString() } : a));
+    const updated = activities.map((a) =>
+      a.id === id ? { ...a, ...updates, updatedAt: new Date().toISOString() } : a
+    );
     await setStorageItem('activities', updated);
   },
 
-  async deleteActivity(id: string): Promise<LearningActivity | null> {
+  async deleteActivity(id: string): Promise<DailyActivity | null> {
     const activities = await this.getActivities();
     const deleted = activities.find((a) => a.id === id) || null;
     const updated = activities.filter((a) => a.id !== id);
@@ -182,31 +138,40 @@ export const StorageService = {
     return deleted;
   },
 
+  // Track Snapshots for Synchronization
+  async getTrackSnapshots(): Promise<Record<string, TrackSnapshot>> {
+    return getStorageItem<Record<string, TrackSnapshot>>('trackSnapshots', {});
+  },
+
+  async saveTrackSnapshots(snapshots: Record<string, TrackSnapshot>): Promise<void> {
+    await setStorageItem('trackSnapshots', snapshots);
+  },
+
+  // Track Progress List
+  async getTracks(): Promise<TrackProgress[]> {
+    return getStorageItem<TrackProgress[]>('tracks', []);
+  },
+
+  async saveTracks(tracks: TrackProgress[]): Promise<void> {
+    await setStorageItem('tracks', tracks);
+  },
+
   // Courses
   async getCourses(): Promise<Course[]> {
-    const courses = await getStorageItem<Course[]>('courses', []);
-    return courses;
+    return getStorageItem<Course[]>('courses', []);
   },
 
   async saveCourse(course: Course): Promise<void> {
     const courses = await this.getCourses();
     const exists = courses.some((c) => c.name.toLowerCase() === course.name.toLowerCase() || c.id === course.id);
     if (!exists) {
-      const updated = [...courses, course];
-      await setStorageItem('courses', updated);
+      await setStorageItem('courses', [...courses, course]);
     }
-  },
-
-  async updateCourse(id: string, updates: Partial<Course>): Promise<void> {
-    const courses = await this.getCourses();
-    const updated = courses.map((c) => (c.id === id ? { ...c, ...updates } : c));
-    await setStorageItem('courses', updated);
   },
 
   async deleteCourse(id: string): Promise<void> {
     const courses = await this.getCourses();
-    const updated = courses.filter((c) => c.id !== id);
-    await setStorageItem('courses', updated);
+    await setStorageItem('courses', courses.filter((c) => c.id !== id));
   },
 
   // Goals
@@ -227,20 +192,33 @@ export const StorageService = {
     await setStorageItem('settings', settings);
   },
 
+  // Last Sync Result
+  async getLastSyncResult(): Promise<SyncResult | null> {
+    return getStorageItem<SyncResult | null>('lastSyncResult', null);
+  },
+
+  async saveLastSyncResult(result: SyncResult): Promise<void> {
+    await setStorageItem('lastSyncResult', result);
+  },
+
   // Export full backup JSON
   async exportDataJSON(): Promise<string> {
     const activities = await this.getActivities();
     const courses = await this.getCourses();
     const goals = await this.getGoals();
     const settings = await this.getSettings();
+    const trackSnapshots = await this.getTrackSnapshots();
+    const tracks = await this.getTracks();
 
     const data = {
-      version: '1.0.0',
+      version: '2.0.0',
       exportedAt: new Date().toISOString(),
       activities,
       courses,
       goals,
       settings,
+      trackSnapshots,
+      tracks,
     };
 
     return JSON.stringify(data, null, 2);
@@ -250,20 +228,19 @@ export const StorageService = {
   async exportActivitiesCSV(): Promise<string> {
     const activities = await this.getActivities();
     if (activities.length === 0) {
-      return 'id,courseName,type,title,module,quantity,durationMinutes,completedAt,notes\n';
+      return 'id,courseName,activityType,quantity,completedAt,source,durationMinutes,notes\n';
     }
 
-    const headers = ['id', 'courseName', 'type', 'title', 'module', 'quantity', 'durationMinutes', 'completedAt', 'notes'];
+    const headers = ['id', 'courseName', 'activityType', 'quantity', 'completedAt', 'source', 'durationMinutes', 'notes'];
     const rows = activities.map((a) => {
       return [
         `"${a.id}"`,
         `"${(a.courseName || '').replace(/"/g, '""')}"`,
-        `"${a.type}"`,
-        `"${(a.title || '').replace(/"/g, '""')}"`,
-        `"${(a.module || '').replace(/"/g, '""')}"`,
+        `"${a.activityType || 'task'}"`,
         a.quantity || 1,
-        a.durationMinutes || 0,
         `"${a.completedAt}"`,
+        `"${a.source || 'manual'}"`,
+        a.durationMinutes || 0,
         `"${(a.notes || '').replace(/"/g, '""')}"`,
       ].join(',');
     });
@@ -291,6 +268,12 @@ export const StorageService = {
       if (parsed.settings && typeof parsed.settings === 'object') {
         await setStorageItem('settings', parsed.settings);
       }
+      if (parsed.trackSnapshots && typeof parsed.trackSnapshots === 'object') {
+        await setStorageItem('trackSnapshots', parsed.trackSnapshots);
+      }
+      if (Array.isArray(parsed.tracks)) {
+        await setStorageItem('tracks', parsed.tracks);
+      }
 
       return { success: true, count: parsed.activities?.length || 0 };
     } catch (err: any) {
@@ -304,5 +287,8 @@ export const StorageService = {
     await setStorageItem('courses', []);
     await setStorageItem('goals', DEFAULT_GOALS);
     await setStorageItem('settings', DEFAULT_SETTINGS);
+    await setStorageItem('trackSnapshots', {});
+    await setStorageItem('tracks', []);
+    await setStorageItem('lastSyncResult', null);
   },
 };

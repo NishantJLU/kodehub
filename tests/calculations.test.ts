@@ -87,4 +87,28 @@ describe('Daily Stats Calculation', () => {
     expect(stats.progressPercent).toBe(80); // 12 / 15 = 80%
     expect(stats.remainingQuestions).toBe(3);
   });
+
+  it('keeps questions solved separate from tasks completed while calculating goals', () => {
+    const today = new Date('2026-11-15T12:00:00');
+    const goals: LearningGoals = {
+      dailyQuestions: 15,
+      dailyLabs: 2,
+      dailyLessons: 3,
+      dailyLearningMinutes: 120,
+      weeklyQuestions: 75,
+      weeklyLabs: 10,
+    };
+
+    const activities: Partial<LearningActivity>[] = [
+      { id: '1', completedAt: '2026-11-15T09:00:00', activityType: 'task', quantity: 2, durationMinutes: 30 },
+      { id: '2', completedAt: '2026-11-15T10:00:00', activityType: 'question', quantity: 3, durationMinutes: 20 },
+    ];
+
+    const stats = calculateDailyStats(activities as LearningActivity[], goals, today);
+
+    expect(stats.tasksCompleted).toBe(2);
+    expect(stats.questionsSolved).toBe(3);
+    expect(stats.progressPercent).toBe(33); // (2 tasks + 3 questions) / 15 = 33%
+    expect(stats.remainingQuestions).toBe(10);
+  });
 });
