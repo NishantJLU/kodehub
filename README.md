@@ -1,6 +1,6 @@
-🚀 KodeHub
+# 🚀 KodeHub
 
-Track Your Learning. Measure Your Progress. Sync Directly to GitHub.
+> **Track Your Learning. Measure Your Progress. Sync Directly to GitHub.**
 
 KodeHub is a Chrome Extension built for KodeKloud learners who want to track their learning journey, monitor daily achievements, visualize progress and automatically maintain a learning portfolio on GitHub.
 
@@ -9,6 +9,7 @@ It combines real-time course progress tracking, learning analytics, activity his
 <p align="center">
   <img src="assets/screenshots/popup-dashboard.png" alt="KodeHub Extension Dashboard" width="360">
 </p>
+
 <p align="center">
   <a href="https://github.com/NishantJLU/kodehub">
     <img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub">
@@ -18,224 +19,154 @@ It combines real-time course progress tracking, learning analytics, activity his
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
 </p>
 
-⸻
+---
 
-📖 Table of Contents
+## 📖 Table of Contents
+- [Overview](#-overview)
+- [Screenshots](#-screenshots)
+- [Features](#-features)
+- [How It Works](#-how-it-works)
+- [GitHub Integration](#-github-integration-setup)
+- [Installation](#-installation)
+- [Project Structure](#-project-structure)
+- [Technology Stack](#-technology-stack)
+- [Testing](#-testing)
+- [Privacy and Data Handling](#-privacy-and-data-handling)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Author](#-author)
 
-* Overview
-* Screenshots
-* Features
-* How It Works
-* GitHub Integration
-* Installation
-* Configuration
-* Project Structure
-* Technology Stack
-* Testing
-* Privacy and Data Handling
-* Roadmap
-* Contributing
-* License
-* Author
+---
 
-⸻
-
-🌟 Overview
-
+## 🌟 Overview
 Learning platforms provide course completion statistics, but maintaining a consistent record of daily learning activity and achievements across multiple courses can be difficult.
 
 KodeHub addresses this by automatically tracking learning progress on KodeKloud Engineer and transforming it into structured, measurable learning analytics.
 
-Whether you’re working through 100 Days of MLOps, 100 Days of DevOps or Cloud certifications, KodeHub helps you understand:
-
-* How many tasks you’ve completed.
-* How much progress you’ve made today.
-* How consistently you’ve been learning.
-* Which courses you’re actively working on.
-* How your learning activity changes over time.
+Whether you’re working through **100 Days of MLOps**, **100 Days of DevOps** or **Cloud certifications**, KodeHub helps you understand:
+- How many tasks you’ve completed.
+- How much progress you’ve made today.
+- How consistently you’ve been learning.
+- Which courses you’re actively working on.
+- How your learning activity changes over time.
 
 It also synchronizes your progress with GitHub, allowing you to maintain a structured and accessible record of your learning journey.
 
-Supported platform: KodeKloud Engineer
+**Supported platform**: [KodeKloud Engineer](https://engineer.kodekloud.com/practice)
 
-⸻
+---
 
-📸 Screenshots
+## 📸 Screenshots
 
-1. Extension Popup
-
+### 1. Extension Popup
 A quick overview of daily learning activity, completed tasks, daily goals, learning time and weekly progress.
-
 <p align="center">
   <img src="assets/screenshots/popup-dashboard.png" alt="KodeHub Popup" width="380">
 </p>
 
-2. Full-Screen Dashboard
-
+### 2. Full-Screen Dashboard
 A detailed learning dashboard featuring activity history, analytics, learning trends and progress visualization.
-
 <p align="center">
   <img src="assets/screenshots/full-dashboard.png" alt="KodeHub Full Dashboard" width="850">
 </p>
 
-3. Learning Analytics
-
+### 3. Learning Analytics
 Visualize your learning consistency through contribution heatmaps, weekly activity charts, course distribution and learning streaks.
-
 <p align="center">
   <img src="assets/screenshots/activity-history.png" alt="KodeHub Learning Analytics" width="850">
 </p>
 
-4. GitHub Integration
-
+### 4. GitHub Integration
 Connect your GitHub account, select a destination repository and synchronize your learning progress automatically.
-
 <p align="center">
   <img src="assets/screenshots/github-integration.png" alt="KodeHub GitHub Integration" width="850">
 </p>
 
-5. GitHub Learning Repository
-
+### 5. GitHub Learning Repository
 Maintain an organized GitHub learning portfolio with course-wise progress, activity records and analytics.
-
 <p align="center">
   <img src="assets/screenshots/github-progress.png" alt="KodeHub GitHub Progress Repository" width="850">
 </p>
 
-⸻
+---
 
-✨ Features
+## ✨ Features
 
-1. Dynamic KodeKloud Course Tracking
-
+### 1. Dynamic KodeKloud Course Tracking
 Automatically discovers and extracts course progress from the KodeKloud Engineer practice page.
+- **Dynamic Course Discovery**: Discovers any visible track without hardcoded course name lists.
+- **Structured DOM & Line Scanning**: Analyzes card containers with contextual line-scan fallbacks.
+- **Multi-Course Recognition**: Supports multiple active, zero-progress, and collapsed courses on the same page.
+- **Generic Button Filtering**: Filters action verbs (`Start`, `Continue`, `Resume`) and description sentences to capture true titles.
+- **Accurate Metric Extraction**: Extracts completed, total, pending, unlocked, and locked counts.
+- **Mathematical Validation**:
+  $$\text{Pending Tasks} = \max(0, \text{Total Tasks} - \text{Completed Tasks})$$
+  $$\text{Progress (\%)} = \frac{\text{Completed Tasks}}{\text{Total Tasks}} \times 100$$
+  *Example*: `100 Days of MLOps` ($100$ total, $17$ completed $\implies 83$ pending, $17\%$).
 
-* Dynamic course discovery without hardcoded course lists.
-* Structured DOM analysis with contextual fallback extraction.
-* Supports multiple active and zero-progress courses.
-* Handles collapsed course cards and dynamically rendered content.
-* Identifies course titles while filtering generic button labels.
-* Extracts completed and total task counts.
-* Validates progress values before saving.
-
-Mathematical validation:
-
-Pending Tasks = Total Tasks - Completed Tasks
-Progress (%) = (Completed Tasks / Total Tasks) × 100
-
-For example:
-
-Course: 100 Days of MLOps
-Total Tasks:       100
-Completed Tasks:   17
-Pending Tasks:     83
-Progress:          17%
-
-2. Reliable Synchronization Engine
-
+### 2. Reliable Synchronization Engine
 KodeHub separates local progress synchronization from GitHub uploads.
 
-Local Synchronization
+#### Local Synchronization (<50ms)
+- Extracts course information from the active KodeKloud page.
+- Compares current progress against previously stored snapshots.
+- Detects newly observed completions (deltas).
+- Updates local Chrome storage and recalculates statistics.
+- Updates popup badge and UI immediately without waiting on network delays.
 
-* Extracts course information from the active KodeKloud page.
-* Compares current progress against previously stored snapshots.
-* Detects newly observed completions.
-* Updates local Chrome storage.
-* Recalculates learning statistics.
-* Updates the popup immediately.
+#### Background GitHub Synchronization
+- Runs independently of local synchronization.
+- Uploads validated learning progress asynchronously.
+- Handles existing GitHub files using SHA-based conditional updates.
+- Prevents duplicate or empty commits when data is unchanged.
+- Recovers gracefully from network timeouts and GitHub API rate limits.
 
-Background GitHub Synchronization
+*The initial synchronization establishes an authentic baseline rather than fabricating past completion dates.*
 
-* Runs independently of local synchronization.
-* Uploads validated learning progress.
-* Updates course records and analytics.
-* Handles existing GitHub files using SHA-based updates.
-* Avoids unnecessary commits.
-* Handles network failures and API rate limits.
+### 3. Daily Learning Analytics
+Monitor your daily learning activity through dedicated metric cards:
 
-The initial synchronization establishes a baseline rather than inventing historical completion activity.
+| Metric | Description |
+| :--- | :--- |
+| **Tasks Completed** | Verified tasks completed today |
+| **Labs Completed** | Recorded hands-on lab activity |
+| **Lessons Completed** | Recorded lesson and topic activity |
+| **Learning Time** | Tracked study duration |
 
-3. Daily Learning Analytics
+**Additional capabilities:**
+- Customizable daily learning target.
+- Daily completion progress bar.
+- Verified activity tracking.
+- Historical activity records.
 
-Monitor your daily learning activity through dedicated metric cards.
+### 4. Learning Streaks and Activity Heatmap
+Understand your learning consistency through visual analytics:
+- Current learning streak.
+- Longest learning streak.
+- Weekly activity distribution (Mon–Sun).
+- 16-week GitHub-style contribution heatmap with 5 activity intensity levels.
+- Course-wise activity distribution.
+- Daily, weekly and monthly learning summaries.
 
-Metric	Description
-Tasks Completed	Verified tasks completed today
-Labs Completed	Recorded hands-on lab activity
-Lessons Completed	Recorded lesson and topic activity
-Learning Time	Tracked study duration
+### 5. Full-Screen Learning Dashboard
+KodeHub includes a dedicated dashboard for managing and analyzing your learning activity:
+- **Focus Study Timer**: Pomodoro-style study timer, customizable session durations, automatic session logging.
+- **Activity Management**: Searchable activity history, filter by activity type or course, search by title and notes, edit records, delete with undo support.
+- **Analytics & Trends**: Recharts weekly bar charts, learning contribution heatmap, course distribution breakdown.
+- **Data Management**: Full JSON backup export/import, CSV activity export, data reset controls.
 
-Additional features:
+### 6. LeetHub-Style GitHub Integration
+KodeHub automatically maintains a separate GitHub repository for your KodeKloud learning progress:
+- GitHub Personal Access Token (classic or fine-grained) authentication.
+- Display connected GitHub account username and avatar.
+- Select an existing repository or create a new public/private repository in one click.
+- Automatic background synchronization on sync or manual push button.
+- SHA-based file updates avoiding duplicate commits.
+- Structured course-wise repository generation.
 
-* Customizable daily learning target.
-* Daily completion progress bar.
-* Verified activity tracking.
-* Historical activity records.
-
-4. Learning Streaks and Activity Heatmap
-
-Understand your learning consistency through visual analytics.
-
-* Current learning streak.
-* Longest learning streak.
-* Weekly activity distribution.
-* 16-week GitHub-style contribution heatmap.
-* Five activity intensity levels.
-* Course-wise activity distribution.
-* Daily, weekly and monthly learning summaries.
-
-5. Full-Screen Learning Dashboard
-
-KodeHub includes a dedicated dashboard for managing and analyzing your learning activity.
-
-Focus Study Timer
-
-* Pomodoro-style study timer.
-* Customizable session durations.
-* Automatic session logging.
-
-Activity Management
-
-* Searchable activity history.
-* Filter by activity type.
-* Filter by course.
-* Search by title and notes.
-* Edit activity records.
-* Delete activities with undo support.
-
-Analytics
-
-* Weekly activity charts.
-* Learning contribution heatmap.
-* Course distribution.
-* Learning trends.
-
-Data Management
-
-* JSON backup export.
-* JSON backup import.
-* CSV activity export.
-* Data reset controls.
-
-6. LeetHub-Style GitHub Integration
-
-KodeHub automatically maintains a separate GitHub repository for your KodeKloud learning progress.
-
-Supported functionality:
-
-* GitHub Personal Access Token authentication.
-* Display connected GitHub account.
-* Select an existing repository.
-* Create a new repository.
-* Support public and private repositories.
-* Automatic background synchronization.
-* Manual GitHub push.
-* SHA-based file updates.
-* Duplicate commit prevention.
-* Structured course-wise repository generation.
-
-Example repository:
-
+**Repository Hierarchy:**
+```text
 kodekloud-progress/
 │
 ├── README.md
@@ -259,338 +190,282 @@ kodekloud-progress/
     ├── overall-progress.json
     ├── weekly-summary.json
     └── monthly-summary.json
+```
+*Individual task folders are generated when verified task identities and completion information are available.*
 
-Individual task folders are generated only when verified task identities and completion information are available.
+**Example Progress Repository**: [NishantJLU/kodekloud-progress](https://github.com/NishantJLU/kodekloud-progress)
 
-Example progress repository: NishantJLU/kodekloud-progress
+---
 
-⸻
+## ⚙️ How It Works
 
-⚙️ How It Works
+### Architecture Diagram
+```text
+KodeKloud Engineer
+       │
+       ▼
+Active Practice Page
+       │
+       ▼
+Content Script (IIFE)
+       │
+       ▼
+Dynamic Course Extraction & Validation
+       │
+       ▼
+Background Service Worker (MV3)
+       │
+   ┌───┴───┐
+   │       │
+   ▼       ▼ (Async Decoupled)
+Local    GitHub
+Storage   REST API
+   │       │
+   ▼       ▼
+Analytics Progress Files
+   │       │
+   ▼       ▼
+Popup UI GitHub Repository
+   │
+   ▼
+Full Dashboard
+```
 
-KodeHub uses a Chrome Extension Manifest V3 architecture.
+### Synchronization Workflow
 
-Architecture
+#### Phase A — Local Synchronization
+1. Detect active KodeKloud tab (`*://*.kodekloud.com/*`).
+2. Verify content-script availability with `PING` (inject dynamically if needed).
+3. Extract visible course cards via dual-strategy DOM and line scanning.
+4. Validate progress numbers and reject button labels.
+5. Compare against stored snapshots and calculate newly observed completions.
+6. Update Chrome local storage and browser action badge.
+7. Return local synchronization result to popup immediately.
 
-          KodeKloud Engineer
-                  |
-                  v
-          Active Practice Page
-                  |
-                  v
-            Content Script
-                  |
-                  v
-        Dynamic Course Extraction
-                  |
-                  v
-          Progress Validation
-                  |
-                  v
-           Background Worker
-                  |
-          +-------+-------+
-          |               |
-          v               v
-    Local Storage     GitHub API
-          |               |
-          v               v
-     Analytics       Progress Files
-          |               |
-          v               v
-      Popup UI       GitHub Repository
-          |
-          v
-    Full Dashboard
+#### Phase B — GitHub Synchronization
+1. Check GitHub connection configuration.
+2. Read validated local progress and course records.
+3. Generate repository markdown and JSON files.
+4. Compare existing GitHub files using SHA values.
+5. Commit only modified files with informative commit messages.
+6. Record commit SHA and update synchronization history.
 
-Synchronization Workflow
+*Local synchronization and GitHub uploads operate independently; a GitHub network delay does not invalidate successfully stored local progress.*
 
-Phase A — Local Synchronization
+---
 
-1. Detect the active KodeKloud tab.
-2. Verify content-script availability.
-3. Extract visible course information.
-4. Validate course progress.
-5. Compare against existing snapshots.
-6. Calculate newly observed completions.
-7. Update Chrome local storage.
-8. Refresh the popup and analytics.
-
-Phase B — GitHub Synchronization
-
-1. Check GitHub connection settings.
-2. Read validated local progress.
-3. Generate repository files.
-4. Compare existing GitHub files.
-5. Update only changed files.
-6. Record commit information.
-7. Update synchronization status.
-
-Local synchronization and GitHub uploads operate independently, so a GitHub network delay does not invalidate successfully stored local progress.
-
-⸻
-
-📥 Installation
+## 📥 Installation
 
 You can install KodeHub locally using the production build.
 
-Prerequisites
+### Prerequisites
+- Google Chrome or Brave Browser.
+- Node.js v18 or later.
+- npm.
+- A GitHub account (optional, for GitHub cloud synchronization).
 
-* Google Chrome or Brave Browser.
-* Node.js v18 or later.
-* npm.
-* A GitHub account (optional, for GitHub synchronization).
-
-Step 1 — Clone the Repository
-
+### Step 1 — Clone the Repository
+```bash
 git clone https://github.com/NishantJLU/kodehub.git
 cd kodehub
+```
 
-Step 2 — Install Dependencies
-
+### Step 2 — Install Dependencies
+```bash
 npm install
+```
 
-Step 3 — Build the Extension
-
+### Step 3 — Build the Extension
+```bash
 npm run build
-
-The production build generates the extension inside:
-
+```
+The production build compiles the extension into:
+```text
 dist/
+```
 
-Step 4 — Load the Extension
-
+### Step 4 — Load the Extension
 1. Open Google Chrome or Brave.
-2. Navigate to chrome://extensions/ or brave://extensions/.
-3. Enable Developer mode.
-4. Click Load unpacked.
-5. Select the dist/ directory.
-6. Pin KodeHub to your browser toolbar.
+2. Navigate to `chrome://extensions/` (or `brave://extensions/`).
+3. Enable **Developer mode** in the top right.
+4. Click **Load unpacked**.
+5. Select the `dist/` directory inside `kodehub`.
+6. Pin **KodeHub** to your browser toolbar.
 
-Step 5 — Start Using KodeHub
+### Step 5 — Start Using KodeHub
+1. Open [KodeKloud Engineer Practice](https://engineer.kodekloud.com/practice).
+2. Wait for course cards to load.
+3. Click the **KodeHub** extension icon.
+4. Click **Sync**.
+5. Review your daily progress, metrics, and learning statistics.
 
-1. Open KodeKloud Engineer.
-2. Navigate to the Active Practice page.
-3. Wait for the course cards to load.
-4. Click the KodeHub extension icon.
-5. Click Sync.
-6. Review your daily progress and learning statistics.
+---
 
-Your progress will be stored locally.
+## 🔗 GitHub Integration Setup
 
-⸻
+GitHub integration is optional. To synchronize your learning progress with GitHub:
 
-🔗 GitHub Integration Setup
+### Step 1 — Generate a Personal Access Token
+Visit [GitHub Personal Access Tokens](https://github.com/settings/tokens) (or [Fine-Grained Tokens](https://github.com/settings/personal-access-tokens)):
+- For a **Fine-grained token**:
+  - **Repository access**: Only select your progress repository.
+  - **Repository permissions**: `Contents` (Read and write), `Metadata` (Read-only).
+- For a **Classic token**:
+  - Select the `repo` scope.
 
-GitHub integration is optional.
+### Step 2 — Connect GitHub
+1. Open the KodeHub full-screen dashboard (click Dashboard in the popup).
+2. Navigate to **GitHub Integration** in the sidebar.
+3. Paste your Personal Access Token and click **Connect**.
+4. Verify your connected GitHub username and avatar.
 
-To synchronize your learning progress with GitHub:
+### Step 3 — Select a Repository
+- Select an existing repository from your account (e.g. `kodekloud-progress`), OR
+- Enter a name to create a new repository directly from the dashboard.
+- Choose Public or Private visibility.
 
-Step 1 — Generate a Personal Access Token
+### Step 4 — Enable Automatic Synchronization
+- Toggle **Automatic Sync** on to push progress in the background after each successful local synchronization.
+- You can also click the manual **Push** button at any time.
 
-Visit:
+> **Security Note**: Use a least-privilege token, never commit tokens to version control, and revoke any token that is accidentally exposed.
 
-https://github.com/settings/personal-access-tokens
+---
 
-Create a token with the minimum permissions required for your selected repository.
+## 📁 Project Structure
 
-For a fine-grained token, configure:
-
-* Repository access: Only the selected progress repository.
-* Repository permissions: Contents — Read and Write.
-* Metadata: Read-only.
-
-If using a classic token, configure the required repo scope.
-
-Step 2 — Connect GitHub
-
-1. Open the KodeHub full-screen dashboard.
-2. Navigate to GitHub Integration.
-3. Enter your Personal Access Token.
-4. Click Connect.
-5. Verify the connected GitHub account.
-
-Step 3 — Select a Repository
-
-You can:
-
-* Select an existing repository.
-* Create a new repository.
-* Choose public or private visibility.
-
-Example:
-
-Repository: kodekloud-progress
-Owner: NishantJLU
-
-Step 4 — Enable Automatic Synchronization
-
-Enable Automatic Sync to push validated progress to GitHub after successful local synchronization.
-
-You can also use the manual Push button whenever required.
-
-Security note: Use a least-privilege token, never commit it to source control, and revoke it if it is exposed.
-
-⸻
-
-📁 Project Structure
-
+```text
 kodehub/
 │
 ├── public/
-│   └── Extension assets and static files
-│
-├── scripts/
-│   └── Build and development scripts
+│   ├── manifest.json          # Chrome Extension Manifest V3 configuration
+│   └── icons/                 # Extension toolbar and store icons
 │
 ├── src/
-│   ├── background/
-│   ├── content/
-│   ├── popup/
-│   ├── dashboard/
-│   ├── services/
-│   ├── utils/
-│   └── types/
+│   ├── background/            # Manifest V3 service worker & sync coordination
+│   ├── content/               # Resilient DOM extraction & validation content script
+│   ├── popup/                 # Quick popup application & stat widgets
+│   ├── dashboard/             # Full-page analytics dashboard
+│   ├── components/            # Reusable UI widgets, timer & modals
+│   ├── services/              # Storage, sync engine, and GitHub REST API client
+│   ├── utils/                 # Progress calculations, streak calculator & date utilities
+│   └── types/                 # TypeScript type definitions & interfaces
 │
-├── tests/
-│   └── Unit and integration tests
+├── tests/                     # 55 automated unit and integration tests (Vitest)
 │
 ├── assets/
-│   └── screenshots/
+│   └── screenshots/           # Extension interface preview screenshots
 │
-├── dashboard.html
-├── popup.html
+├── dashboard.html             # Dashboard entry HTML
+├── popup.html                 # Popup entry HTML
 ├── package.json
-├── package-lock.json
-├── vite.config.ts
+├── vite.config.ts             # Multi-target Vite and Rollup bundler configuration
 ├── README.md
-└── LICENSE
+└── LICENSE                    # MIT License
+```
 
-⸻
+---
 
-🛠️ Technology Stack
+## 🛠️ Technology Stack
 
-Category	Technology
-Extension Framework	Chrome Extension Manifest V3
-Build Tool	Vite
-Programming Language	TypeScript
-Frontend	React 18
-Styling	Tailwind CSS
-Icons	Lucide React
-Data Visualization	Recharts, SVG
-Local Storage	Chrome Storage API
-GitHub Integration	GitHub REST API
-Testing	Vitest, JSDOM
+| Category | Technology |
+| :--- | :--- |
+| **Extension Framework** | Chrome Extension Manifest V3 |
+| **Build Tool** | Vite |
+| **Programming Language** | TypeScript |
+| **Frontend** | React 18 |
+| **Styling** | Tailwind CSS |
+| **Icons** | Lucide React |
+| **Data Visualization** | Recharts, SVG Heatmaps |
+| **Local Storage** | Chrome Storage API (`chrome.storage.local`) |
+| **GitHub Integration** | GitHub REST API (v3) |
+| **Testing** | Vitest, JSDOM |
 
-⸻
+---
 
-🧪 Testing
+## 🧪 Testing
 
-KodeHub includes an automated test suite with 55 unit and integration tests.
+KodeHub includes an automated test suite with **55 unit and integration tests** covering:
+- Mathematical boundary conditions and metric separation.
+- Dynamic multi-course discovery and line-scan fallbacks.
+- Collapsed course card handling.
+- Button label (`Start`, `Continue`, `Resume`) and description filtering.
+- Streak and weekly distribution calculations.
+- Manifest V3 message listeners, timeouts, and mutex locks.
+- LeetHub-style GitHub tree generation and idempotent updates.
 
-The tests cover:
-
-* Progress calculations and mathematical boundaries.
-* Course discovery and extraction.
-* Collapsed course handling.
-* Invalid course-title filtering.
-* Streak calculations.
-* Weekly activity calculations.
-* Manifest V3 messaging.
-* Synchronization and mutex handling.
-* GitHub repository generation.
-* Idempotent file updates.
-
-Run Tests
-
+### Run Tests
+```bash
 npm test
+```
 
-Build Production Extension
-
+### Build Production Extension
+```bash
 npm run build
+```
 
-⸻
+---
 
-🔐 Privacy and Data Handling
+## 🔐 Privacy and Data Handling
 
-KodeHub is designed to keep learning progress under the user’s control.
+KodeHub is designed to keep learning progress under the user’s control:
+- Learning records and track snapshots are stored locally in your browser using `chrome.storage.local`.
+- GitHub synchronization is completely optional.
+- Progress is uploaded solely to the repository explicitly selected by the user.
+- Authentication uses a user-provided Personal Access Token; tokens are stored in local extension storage.
+- The extension does not transmit data to any third-party analytics services or private backend servers.
+- Existing progress and snapshots are strictly preserved if a synchronization operation encounters an error.
 
-* Learning records are stored locally using Chrome Storage.
-* GitHub synchronization is optional.
-* Progress is uploaded only to the repository configured by the user.
-* GitHub authentication uses a user-provided Personal Access Token.
-* The extension does not require a separate application backend for its core functionality.
-* Existing progress is preserved when synchronization fails.
+---
 
-Review the source code before providing authentication credentials.
+## 🗺️ Roadmap
 
-⸻
+- [ ] Chrome Web Store publication.
+- [ ] Additional KodeKloud learning analytics and track comparisons.
+- [ ] More detailed course-level activity and milestone insights.
+- [ ] Enhanced historical progress charts and exportable PDF summaries.
+- [ ] Improved task-level tracking where supported by the platform.
+- [ ] Additional learning-platform integrations.
+- [ ] Advanced GitHub learning portfolio badges and interactive widgets.
 
-🗺️ Roadmap
+---
 
-Potential future improvements:
+## 🤝 Contributing
 
-* Chrome Web Store publication.
-* Additional KodeKloud learning analytics.
-* More detailed course-level activity insights.
-* Enhanced historical progress comparisons.
-* Improved task-level tracking where supported by the platform.
-* Additional learning-platform integrations.
-* Advanced GitHub learning portfolio visualization.
-* Exportable learning reports.
-
-⸻
-
-🤝 Contributing
-
-Contributions, bug reports and feature suggestions are welcome.
-
-If you would like to contribute:
+Contributions, bug reports, and feature suggestions are welcome!
 
 1. Fork the repository.
-2. Create a feature branch.
-3. Implement your changes.
-4. Run the existing test suite.
-5. Submit a pull request.
+2. Create a feature branch (`git checkout -b feature/new-feature`).
+3. Commit your changes (`git commit -m 'feat: add new feature'`).
+4. Run the test suite (`npm test`).
+5. Push to the branch (`git push origin feature/new-feature`).
+6. Open a Pull Request.
 
-For bug reports, please include:
+*Please never include authentication tokens or sensitive credentials in pull requests or issue reports.*
 
-* Browser and version.
-* KodeHub version.
-* Steps to reproduce.
-* Relevant error messages.
-* Screenshots, if applicable.
+---
 
-Please never include authentication tokens or other sensitive information in issue reports.
+## 📄 License
 
-⸻
+KodeHub is distributed under the **MIT License**.  
+See the [LICENSE](LICENSE) file for details.
 
-📄 License
+---
 
-KodeHub is distributed under the MIT License.
+## 👨‍💻 Author
 
-See the LICENSE file for details.
+**Nishant Singh**  
+B.Tech Computer Science & Engineering  
+GitHub: [@NishantJLU](https://github.com/NishantJLU)  
+LinkedIn: [Nishant Singh](https://www.linkedin.com/in/nishantsingh-dev/)  
 
-⸻
+### Project Links
+- Source Code: [NishantJLU/kodehub](https://github.com/NishantJLU/kodehub)
+- Learning Progress: [NishantJLU/kodekloud-progress](https://github.com/NishantJLU/kodekloud-progress)
 
-👨‍💻 Author
-
-Nishant Singh
-
-B.Tech Computer Science & Engineering
-
-* GitHub: @NishantJLU
-* LinkedIn: Nishant Singh
-
-Project Links
-
-* Source Code: NishantJLU/kodehub
-* Learning Progress: NishantJLU/kodekloud-progress
-
-⸻
+---
 
 <p align="center">
-  <b>Built to make learning measurable, consistent and visible.</b>
-  <br>
+  <b>Built to make learning measurable, consistent and visible.</b><br>
   ⭐ If you find KodeHub useful, consider giving the repository a star!
 </p>
