@@ -63,7 +63,16 @@ import { GitHubIntegrationView } from '../components/GitHubIntegrationView';
 type Tab = 'overview' | 'log' | 'analytics' | 'courses' | 'goals' | 'github' | 'settings';
 
 export const DashboardApp: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as Tab;
+      if (tabParam && ['overview', 'log', 'analytics', 'courses', 'goals', 'github', 'settings'].includes(tabParam)) {
+        return tabParam;
+      }
+    }
+    return 'overview';
+  });
   const [activities, setActivities] = useState<LearningActivity[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [goals, setGoals] = useState<LearningGoals>({
