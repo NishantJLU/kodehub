@@ -151,21 +151,23 @@ KodeHub adheres to Google Chrome's Manifest V3 architecture, employing an isolat
 
 ```mermaid
 flowchart TD
-    KP["KodeKloud Engineer Page<br/>(engineer.kodekloud.com/practice)"] -->|DOM Inspection & Line Scan| CS["Content Script<br/>(content.js - IIFE)"]
-    
-    CS -->|EXTRACT_COURSES Message| SW["Background Service Worker<br/>(background.js - ESM)"]
-    
-    subgraph LocalSync ["Phase 1: Local Synchronization"]
-        SW -->|Validate Metrics & Compute Deltas| PE["Progress Engine"]
-        PE -->|Persist Snapshots & Daily Logs| CSLocal[("Chrome Local Storage<br/>(chrome.storage.local)")]
-        CSLocal -->|Update UI & Badges| UI["Popup & Dashboard UI<br/>(React 18 + Tailwind)"]
+    KP["KodeKloud Engineer Practice Page"] -->|"DOM Inspection and Line Scan"| CS["Content Script (content.js)"]
+    CS -->|"EXTRACT_COURSES Message"| SW["Background Service Worker (background.js)"]
+
+    subgraph Phase1["Phase 1: Local Synchronization"]
+        direction TB
+        PE["Progress Engine"] -->|"Persist Snapshots and Logs"| CSLocal[("Chrome Local Storage")]
+        CSLocal -->|"Update UI and Badges"| UI["Popup and Dashboard UI"]
     end
-    
-    subgraph GitHubSync ["Phase 2: Decoupled GitHub Auto-Push"]
-        SW -.->|Async Trigger| GH["GitHub Service<br/>(REST API v3)"]
-        GH -->|Check File SHAs| GHR["GitHub Progress Repo<br/>(NishantJLU/kodekloud-progress)"]
-        GH -->|Push Idempotent Tree Updates| GHR
+
+    subgraph Phase2["Phase 2: Decoupled GitHub Auto-Push"]
+        direction TB
+        GH["GitHub Service (REST API v3)"] -->|"Check Remote File SHAs"| GHR["GitHub Progress Repository"]
+        GH -->|"Push Idempotent Tree Updates"| GHR
     end
+
+    SW -->|"Validate Metrics and Deltas"| PE
+    SW -.->|"Async Trigger"| GH
 ```
 
 ---
